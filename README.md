@@ -184,7 +184,8 @@ endpoint, one model at a time, by growing the `state` until it answers
 
 | Model | Usable request tokens (measured) |
 | --- | ---: |
-| `openai/gpt-6-luna-decisions`, `perplexity/pplx-decider-v1.1-27b` | 524 288 |
+| `openai/gpt-6-luna-decisions` | 524 288 |
+| `perplexity/pplx-decider-v1.1-27b` | 150 000 (token ceiling is higher; the gateway times out first) |
 | `upstage/solar-decide`, `upstage/solar-decide-flash` | 491 520 |
 | `cloudflare/clef` | 458 752 |
 | `cloudflare/clef-omni`, `togethercomputer/tev1-4b-experimental` | 245 760 |
