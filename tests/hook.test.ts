@@ -113,6 +113,13 @@ describe('hook config', () => {
       minReductionRatio: 0.25,
     });
   });
+
+  it('passes the text thresholds through to the compaction options', () => {
+    expect(resolveHookConfig({ injectedMinChars: 0, replyMinChars: 500 })).toMatchObject({
+      injectedMinChars: 0,
+      replyMinChars: 500,
+    });
+  });
 });
 
 describe('session message mapping', () => {

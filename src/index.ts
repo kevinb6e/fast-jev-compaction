@@ -4,5 +4,6 @@ export * from './client.js';
 export * from './state.js';
 export * from './models.js';
 export * from './compact.js';
+export * from './text.js';
 export * from './render.js';
 export * from './messages.js';

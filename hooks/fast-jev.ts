@@ -79,6 +79,8 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
     'maxStateTokens',
     'maxRequestTokens',
     'truncateHeadChars',
+    'injectedMinChars',
+    'replyMinChars',
   ] as const) {
     const value = options[key];
     if (typeof value === 'number' && Number.isFinite(value)) numbers[key] = value;
@@ -214,6 +216,9 @@ export function summarize(result: CompactResult): string {
     stats.resultsDropped > 0 ? `${stats.resultsDropped} results truncated` : '',
     stats.callsDropped > 0 ? `${stats.callsDropped} call_dropped` : '',
     stats.pinned > 0 ? `${stats.pinned} pinned` : '',
+    stats.textsRemoved > 0 ? `${stats.textsRemoved} text blocks removed` : '',
+    stats.duplicatesRemoved > 0 ? `${stats.duplicatesRemoved} duplicates removed` : '',
+    stats.repliesAbridged > 0 ? `${stats.repliesAbridged} replies abridged` : '',
   ].filter(Boolean);
   return `${percent(reductionRatio(result))} reduction; ${
     parts.join(', ') || 'no tool calls'
@@ -223,13 +228,16 @@ export function summarize(result: CompactResult): string {
 const UI_LOG_MAX_CHARS = 4096;
 
 export function decisionLog(result: CompactResult): string {
-  return result.decisions
+  const calls = result.decisions
     .filter((d) => d.reason !== 'pinned')
     .map(
       (d) =>
         `${d.id}:${d.tool}:${d.action}/call=${d.keepCall.toFixed(2)}/result=${d.keepResult.toFixed(2)}`,
-    )
-    .join(' ');
+    );
+  const texts = result.textDecisions
+    .filter((d) => d.reason !== 'pinned' && d.reason !== 'small')
+    .map((d) => `${d.id}:${d.kind}:${d.reason}/keep=${d.keep.toFixed(2)}`);
+  return [...calls, ...texts].join(' ');
 }
 
 export function decisionLogLines(
