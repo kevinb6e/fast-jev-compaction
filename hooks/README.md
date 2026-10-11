@@ -71,7 +71,9 @@ the URL. See the root README, "Providers".
 
 Every option except `apiKey`, `compactAtPercent`, `minReductionRatio` and
 `model` is passed straight to the library; see the root README for what they
-do. The `session.compact` hook runs the Jev requests concurrently. If Jev fails,
+do. The event's `instructions` (whatever the user typed after `/compact`) are
+carried into the state's goal, so the decisions know what the compaction is for.
+The `session.compact` hook runs the Jev requests concurrently. If Jev fails,
 the response is malformed, the key is unavailable, the history cannot be
 fitted into the state budget, or the estimated reduction is below
 `minReductionRatio`, the hook logs a fallback and delegates to Claude Code's

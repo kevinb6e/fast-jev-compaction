@@ -69,6 +69,7 @@ const fit = {
   maxStateTokens: 25_000,
   preserveRecentMessages: 0,
   goal: 'fix the test',
+  instructions: '',
 };
 
 describe('options', () => {
@@ -89,6 +90,38 @@ describe('options', () => {
       preserveRecentMessages: 2,
       truncateHeadChars: 0,
     });
+  });
+});
+
+describe('compaction instructions', () => {
+  const goalOf = (options: Parameters<typeof resolveOptions>[0]): string =>
+    fitState(transcript(), [], { ...resolveOptions(options), preserveRecentMessages: 0 }).state.goal;
+
+  it('appends instructions after a configured goal', () => {
+    expect(goalOf({ goal: 'Ship the parser', instructions: 'keep the auth work' })).toBe(
+      'Ship the parser\n\nkeep the auth work',
+    );
+  });
+
+  it('appends instructions after the goal inferred from the conversation', () => {
+    const inferred = goalOf({});
+    expect(inferred).toContain('Fix the failing test.');
+    expect(goalOf({ instructions: 'keep the auth work' })).toBe(`${inferred}\n\nkeep the auth work`);
+  });
+
+  it('lets instructions stand alone when nothing else provides a goal', () => {
+    const fitted = fitState([message('assistant', 'Working.')], [], {
+      ...resolveOptions({ instructions: 'keep the auth work' }),
+      preserveRecentMessages: 0,
+    });
+    expect(fitted.state.goal).toBe('keep the auth work');
+  });
+
+  it('ignores blank instructions and truncates oversized ones', () => {
+    expect(goalOf({ goal: 'Ship it', instructions: '   \n  ' })).toBe('Ship it');
+    const goal = goalOf({ goal: 'Ship it', instructions: 'keep '.repeat(200) });
+    expect(goal.startsWith('Ship it\n\nkeep ')).toBe(true);
+    expect(goal.length).toBeLessThan(520);
   });
 });
 

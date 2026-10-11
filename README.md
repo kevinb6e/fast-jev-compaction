@@ -271,6 +271,7 @@ a source file.
 | `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone` or `https://openrouter.ai/api/v1/systemone`) |
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
+| `instructions` | — | What the user asked this compaction to keep or drop (`/compact keep the auth work`), appended after the goal; truncated the way an inferred goal is |
 | `keepThreshold` | `0.5` | Minimum keep probability for a call or result to stay |
 | `preserveRecentMessages` | `6` | Newest messages never touched (the first is always kept) |
 | `maxStateTokens` | from the model | Estimated token ceiling for the state (25k for `jev-latest`) |

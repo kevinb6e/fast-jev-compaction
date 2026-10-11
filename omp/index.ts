@@ -360,7 +360,11 @@ export async function handleBeforeCompact(
 ): Promise<SessionBeforeCompactResult | undefined> {
   if (event.signal?.aborted) return undefined;
   try {
-    const outcome = await buildSummary(event.preparation, options, asker);
+    const outcome = await buildSummary(
+      event.preparation,
+      { ...options, instructions: event.customInstructions ?? options.instructions },
+      asker,
+    );
     if (!outcome.summary) {
       ctx.ui.notify(`${EXTENSION_ID}: falling back to omp's summarizer (${outcome.reason})`, 'warning');
       return undefined;
