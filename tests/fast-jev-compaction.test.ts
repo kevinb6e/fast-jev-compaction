@@ -14,6 +14,9 @@ import {
   parseJevResponse,
   reductionRatio,
   resolveOptions,
+  safeCutEnd,
+  safeCutStart,
+  truncate,
   type HistoryToolCall,
   type JevAsker,
   type JevQuestions,
@@ -52,6 +55,9 @@ function transcript(): Message[] {
 }
 
 type Seen = { state: unknown; questions: string[] };
+
+/** A lone half of a surrogate pair: what the decision endpoint rejects. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 function fakeJev(answer: (name: string) => number, seen: Seen[] = []): JevAsker {
   return {
@@ -137,6 +143,20 @@ describe('token estimate', () => {
   });
 });
 
+describe('code-point safe cuts', () => {
+  it('leaves a cut that already falls between two code points', () => {
+    expect(safeCutEnd('abcd', 2)).toBe(2);
+    expect(safeCutEnd('abcd', 0)).toBe(0);
+    expect(safeCutStart('abcd', 2)).toBe(2);
+  });
+
+  it('moves a cut out of a surrogate pair', () => {
+    const text = 'ab🎯cd'; // a b high low c d
+    expect(safeCutEnd(text, 3)).toBe(2);
+    expect(safeCutStart(text, 3)).toBe(2);
+  });
+});
+
 describe('tool call collection', () => {
   it('pairs each tool call with its result and pins recent ones', () => {
     const calls = collectToolCalls(transcript(), 3);
@@ -151,6 +171,56 @@ describe('tool call collection', () => {
 
   it('ignores calls without a result', () => {
     expect(collectToolCalls([message('user', 'hi'), call('x', 'Read', {}, '')], 0)).toHaveLength(0);
+  });
+});
+
+describe('surrogate-safe truncation', () => {
+  it('keeps a text fitted into the state off a surrogate pair', () => {
+    const head = 'a'.repeat(398);
+    expect(truncate(`${head}🎯${'b'.repeat(10)}`, 400)).toBe(`${head}…`);
+    expect(truncate(`${'a'.repeat(400)}🎯${'b'.repeat(10)}`, 400)).toBe(`${'a'.repeat(399)}…`);
+  });
+
+  it('keeps a truncated dropped result off a surrogate pair and counts what it removed', () => {
+    const messages = transcript();
+    const head = 'x'.repeat(299);
+    const text = `${head}🎯${'y'.repeat(2000)}`;
+    messages[2]!.toolResults![0]!.text = text;
+    const calls = collectToolCalls(messages, 0);
+    const decisions = [decideCall(calls[0]!, { keepCall: 0.9, keepResult: 0.1 }, { keepThreshold: 0.5 })];
+
+    const kept = applyDecisions(messages, decisions, calls, 300);
+    const truncated = kept[2]?.toolResults?.[0]?.text ?? '';
+
+    expect(truncated).toBe(
+      `${head}\n[fast-jev-compaction truncated ${text.length - head.length} chars of this tool result; re-run the tool if needed]`,
+    );
+    expect(LONE_SURROGATE.test(truncated)).toBe(false);
+    const counted = Number(/truncated (\d+) chars/.exec(truncated)?.[1]);
+    expect(head.length + counted).toBe(text.length);
+
+    const aligned = transcript();
+    aligned[2]!.toolResults![0]!.text = `${'x'.repeat(300)}🎯${'y'.repeat(2000)}`;
+    const plain = applyDecisions(aligned, decisions, calls, 300);
+    expect(plain[2]?.toolResults?.[0]?.text).toMatch(new RegExp(`^${'x'.repeat(300)}\\n\\[fast-jev-compaction truncated 2002 chars`));
+  });
+
+  it('abridges around surrogate pairs and reports the characters it omitted', () => {
+    const text = `${'a'.repeat(399)}🎯${'b'.repeat(3000)}🚀${'c'.repeat(149)}`;
+    const messages = [
+      message('user', 'start'),
+      message('assistant', text),
+      message('user', `2 ${'lorem ipsum '.repeat(300)}`),
+      message('assistant', `3 ${'lorem ipsum '.repeat(300)}`),
+      message('user', 'latest'),
+    ];
+
+    const abridged = fitState(messages, [], { ...fit, maxStateTokens: 1800, preserveRecentMessages: 1 });
+    expect(abridged.stage).toBe('texts abridged');
+    const kept = abridged.state.history[1]?.text ?? '';
+    expect(kept).toBe(`${'a'.repeat(399)}\n[… 3002 chars omitted …]\n🚀${'c'.repeat(149)}`);
+    expect(LONE_SURROGATE.test(kept)).toBe(false);
+    expect(JSON.stringify(abridged.state)).not.toMatch(/\\ud[89abcdef][0-9a-f]{2}/i);
   });
 });
 

@@ -1,4 +1,4 @@
-import { isPinned, truncate } from './state.js';
+import { isPinned, safeCutEnd, safeCutStart, truncate } from './state.js';
 import type {
   JevQuestions,
   Message,
@@ -161,8 +161,9 @@ export function decideText(
 
 function replacement(block: TextBlock, decision: TextDecision, text: string): string {
   if (decision.action === 'abridge') {
-    const omitted = text.length - REPLY_HEAD - REPLY_TAIL;
-    return `${text.slice(0, REPLY_HEAD)}\n[fast-jev-compaction abridged ${omitted} chars of this reply]\n${text.slice(-REPLY_TAIL)}`;
+    const end = safeCutEnd(text, REPLY_HEAD);
+    const start = safeCutStart(text, Math.max(0, text.length - REPLY_TAIL));
+    return `${text.slice(0, end)}\n[fast-jev-compaction abridged ${start - end} chars of this reply]\n${text.slice(start)}`;
   }
   const why = decision.reason === 'duplicate' ? 'repeated later' : `${block.chars} chars`;
   return `[fast-jev-compaction removed ${block.label}: ${why}]`;
