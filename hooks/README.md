@@ -67,7 +67,10 @@ explicit `provider` plugin option, then a `baseUrl` containing `openrouter.ai`,
 then a `sk-or-` key in either variable, then a lone `OPENROUTER_API_KEY`, then
 TypeSafe. So an OpenRouter key works with no further setting, wherever it is
 exported; `provider: "openrouter"` forces the choice, and `baseUrl` overrides
-the URL. See the root README, "Providers".
+the URL. `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read from those same two
+environments when no `baseUrl` is set, so the transcript follows an endpoint
+exported for another tool; the toast names the host it went to. See the root
+README, "Providers".
 
 Every option except `apiKey`, `compactAtPercent`, `minReductionRatio` and
 `model` is passed straight to the library; see the root README for what they

@@ -16,10 +16,13 @@ import {
   applyRequestBudget,
   compact,
   DEFAULT_MODEL,
+  endpointHost,
+  environmentEndpoint,
   estimateTokens,
   isJevProvider,
   JevClient,
   renderTranscript,
+  resolveJevEndpoint,
 } from '../src/index.js';
 import type {
   CompactOptions,
@@ -115,7 +118,7 @@ export function resolvePluginOptions(
   if (isJevProvider(provider)) resolved.provider = provider;
   const apiKey = string(options['apiKey']) ?? env['FAST_JEV_API_KEY'];
   if (apiKey) resolved.apiKey = apiKey;
-  const baseUrl = string(options['baseUrl']) ?? env['FAST_JEV_BASE_URL'];
+  const baseUrl = string(options['baseUrl']) ?? env['FAST_JEV_BASE_URL'] ?? environmentEndpoint(env);
   if (baseUrl) resolved.baseUrl = baseUrl;
   const goal = string(options['goal']) ?? env['FAST_JEV_GOAL'];
   if (goal) resolved.goal = goal;
@@ -325,16 +328,17 @@ function log(text: string): void {
   console.log(`[${PLUGIN_ID}] ${text}`);
 }
 
-function statsLine(outcome: SummaryOutcome): string {
+function statsLine(outcome: SummaryOutcome, host?: string): string {
   const { result, reduction } = outcome;
-  if (!result) return `${percent(reduction ?? 0)} reduction`;
+  const via = host ? [`, via ${host}`] : [];
+  if (!result) return `${percent(reduction ?? 0)} reduction${via}`;
   const { stats } = result;
   return [
     `${percent(reduction ?? 0)} reduction`,
     `${stats.resultsDropped} results truncated`,
     `${stats.callsDropped} calls dropped`,
     `~${stats.stateTokens} state tokens in ${stats.requests} request(s)`,
-    `${stats.ms}ms`,
+    `${stats.ms}ms${via}`,
   ].join(', ');
 }
 
@@ -383,7 +387,14 @@ export async function handleCompaction(
         },
       },
     };
-    log(`recorded summary (${statsLine(outcome)})`);
+    log(
+      `recorded summary (${statsLine(
+        outcome,
+        endpointHost(
+          resolveJevEndpoint({ provider: options.provider, baseUrl: options.baseUrl }).url,
+        ),
+      )})`,
+    );
     return true;
   } catch (error) {
     log(`falls back to OpenCode's summarizer: ${messageOf(error)}`);

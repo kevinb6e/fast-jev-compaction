@@ -12,10 +12,13 @@ import { compact, reductionRatio, resolveOptions } from '../src/compact.js';
 import {
   buildJevRequest,
   DEFAULT_MODEL,
+  endpointHost,
+  environmentEndpoint,
   isJevProvider,
   missingApiKeyError,
   parseJevResponse,
   PROVIDER_ENV_KEYS,
+  resolveJevEndpoint,
   resolveJevProvider,
   type JevEndpointOptions,
   type JevProvider,
@@ -209,7 +212,7 @@ function percent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
 }
 
-export function summarize(result: CompactResult): string {
+export function summarize(result: CompactResult, host?: string): string {
   const { stats } = result;
   const parts = [
     stats.kept > 0 ? `${stats.kept} kept` : '',
@@ -222,7 +225,9 @@ export function summarize(result: CompactResult): string {
   ].filter(Boolean);
   return `${percent(reductionRatio(result))} reduction; ${
     parts.join(', ') || 'no tool calls'
-  }; state ~${stats.stateTokens} tokens (${stats.stateStage}) in ${stats.requests} request(s)`;
+  }; state ~${stats.stateTokens} tokens (${stats.stateStage}) in ${stats.requests} request(s)${
+    host ? ` via ${host}` : ''
+  }`;
 }
 
 const UI_LOG_MAX_CHARS = 4096;
@@ -275,7 +280,7 @@ export async function getCredentials(
     settings: { read: () => Promise<Readonly<Record<string, unknown>>> };
   },
   config: HookConfig,
-): Promise<{ apiKey?: string; provider: JevProvider }> {
+): Promise<{ apiKey?: string; provider: JevProvider; baseUrl?: string }> {
   const settings = await $.settings.read();
   const settingsEnv = settings['env'];
   const fromSettings = (name: string): string | undefined => {
@@ -298,6 +303,8 @@ export async function getCredentials(
       await $.env.get('OPENROUTER_API_KEY'),
       'OPENROUTER_API_KEY',
     ),
+    JEV_BASE_URL: prefer(await $.env.get('JEV_BASE_URL'), 'JEV_BASE_URL'),
+    TYPESAFE_BASE_URL: prefer(await $.env.get('TYPESAFE_BASE_URL'), 'TYPESAFE_BASE_URL'),
   };
   // A supplied key pins the endpoint; an implicit one is found through `env`.
   const provider = resolveJevProvider(
@@ -305,7 +312,14 @@ export async function getCredentials(
     config.apiKey === undefined ? env : undefined,
   );
   const apiKey = config.apiKey ?? env[PROVIDER_ENV_KEYS[provider]];
-  return apiKey ? { apiKey, provider } : { provider };
+  // A configured endpoint wins; otherwise the environment decides where the
+  // transcript goes, which is why the outcome line names the host.
+  const baseUrl = config.baseUrl ?? environmentEndpoint(env);
+  return {
+    ...(apiKey ? { apiKey } : {}),
+    provider,
+    ...(baseUrl ? { baseUrl } : {}),
+  };
 }
 
 function notify(
@@ -334,16 +348,19 @@ export const register: Register = (on: On, options: PluginOptions) => {
         return { status: response.status, ok: response.ok, text: response.text };
       });
       for (const line of decisionLogLines(result)) $.ui.log(line);
+      const host = endpointHost(
+        resolveJevEndpoint({ provider: config.provider, baseUrl: config.baseUrl }).url,
+      );
       if (reductionRatio(result) < config.minReductionRatio) {
         notify(
           $,
-          `fallback to built-in summary (below ${percent(config.minReductionRatio)} minimum: ${summarize(result)})`,
+          `fallback to built-in summary (below ${percent(config.minReductionRatio)} minimum: ${summarize(result, host)})`,
         );
         return next(event);
       }
       notify(
         $,
-        `kept ${messages.length}/${event.messages.length} messages, no summary (${summarize(result)})`,
+        `kept ${messages.length}/${event.messages.length} messages, no summary (${summarize(result, host)})`,
       );
       return { messages };
     } catch (error) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { JevClient } from '../src/client.js';
 import {
   buildJevRequest,
+  endpointHost,
   isJevProvider,
   missingApiKeyError,
   OPENROUTER_SYSTEM_ONE_URL,
@@ -56,6 +57,51 @@ describe('resolveJevEndpoint', () => {
     expect(resolveJevEndpoint({ baseUrl: 'https://proxy.local/systemone' }).url).toBe(
       'https://proxy.local/systemone',
     );
+  });
+});
+
+describe('endpoint from the environment', () => {
+  it('takes a full endpoint URL verbatim', () => {
+    expect(resolveJevEndpoint({}, { JEV_BASE_URL: 'https://engine.local/systemone' }).url).toBe(
+      'https://engine.local/systemone',
+    );
+  });
+
+  it('appends the System One route to a host, but only once', () => {
+    expect(resolveJevEndpoint({}, { TYPESAFE_BASE_URL: 'https://engine.local' }).url).toBe(
+      'https://engine.local/v1/systemone',
+    );
+    expect(resolveJevEndpoint({}, { TYPESAFE_BASE_URL: 'https://engine.local/' }).url).toBe(
+      'https://engine.local/v1/systemone',
+    );
+    expect(
+      resolveJevEndpoint({}, { TYPESAFE_BASE_URL: 'https://engine.local/v1/systemone' }).url,
+    ).toBe('https://engine.local/v1/systemone');
+  });
+
+  it('prefers JEV_BASE_URL over TYPESAFE_BASE_URL, and an explicit endpoint over both', () => {
+    const env = { JEV_BASE_URL: 'https://jev.local', TYPESAFE_BASE_URL: 'https://ts.local' };
+    expect(resolveJevEndpoint({}, env).url).toBe('https://jev.local');
+    expect(resolveJevEndpoint({ baseUrl: 'https://explicit.local' }, env).url).toBe(
+      'https://explicit.local',
+    );
+  });
+
+  it('keeps the provider default and the OpenRouter key rule', () => {
+    expect(resolveJevEndpoint({}, {}).url).toBe(SYSTEM_ONE_URL);
+    expect(resolveJevEndpoint({}, { OPENROUTER_API_KEY: 'sk-or-v1-abc' }).url).toBe(
+      OPENROUTER_SYSTEM_ONE_URL,
+    );
+    expect(
+      resolveJevEndpoint({}, { TYPESAFE_BASE_URL: 'https://engine.local', TYPESAFE_API_KEY: 't' }),
+    ).toEqual({ provider: 'typesafe', url: 'https://engine.local/v1/systemone' });
+  });
+});
+
+describe('endpointHost', () => {
+  it('names the host, and falls back to a value it cannot parse', () => {
+    expect(endpointHost('https://api.typesafe.ai/v1/systemone')).toBe('api.typesafe.ai');
+    expect(endpointHost('localhost:8080')).toBe('localhost:8080');
   });
 });
 
