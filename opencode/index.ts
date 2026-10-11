@@ -24,6 +24,7 @@ import {
   JevClient,
   renderTranscript,
   resolveJevEndpoint,
+  resolveJevProvider,
 } from '../src/index.js';
 import type {
   CompactOptions,
@@ -136,7 +137,10 @@ export function resolvePluginOptions(
   if (isJevProvider(provider)) resolved.provider = provider;
   const apiKey = string(options['apiKey']) ?? env['FAST_JEV_API_KEY'];
   if (apiKey) resolved.apiKey = apiKey;
-  const baseUrl = string(options['baseUrl']) ?? env['FAST_JEV_BASE_URL'] ?? environmentEndpoint(env);
+  const baseUrl =
+    string(options['baseUrl']) ??
+    env['FAST_JEV_BASE_URL'] ??
+    environmentEndpoint(env, resolveJevProvider(resolved, env));
   if (baseUrl) resolved.baseUrl = baseUrl;
   const goal = string(options['goal']) ?? env['FAST_JEV_GOAL'];
   if (goal) resolved.goal = goal;

@@ -77,12 +77,17 @@ export const ENDPOINT_ENV_KEYS = {
  * The endpoint the environment asks for: `JEV_BASE_URL` is a whole endpoint URL,
  * `TYPESAFE_BASE_URL` is the host form TypeSafe's own SDKs take, so the System
  * One route is appended unless it is already there. `JEV_BASE_URL` wins.
+ * `TYPESAFE_BASE_URL` routes to TypeSafe, so it is ignored when the resolved
+ * provider is OpenRouter — sending an OpenRouter key to the TypeSafe route
+ * would just 401. Anything else keeps today's behavior.
  */
 export function environmentEndpoint(
   env: Record<string, string | undefined> = {},
+  provider?: JevProvider,
 ): string | undefined {
   const full = env[ENDPOINT_ENV_KEYS.full];
   if (full) return full;
+  if (provider === 'openrouter') return undefined;
   const base = env[ENDPOINT_ENV_KEYS.host]?.replace(/\/+$/, '');
   if (!base) return undefined;
   return base.endsWith('/v1/systemone') ? base : `${base}/v1/systemone`;
@@ -111,7 +116,10 @@ export function resolveJevEndpoint(
   env?: Record<string, string | undefined>,
 ): JevEndpoint {
   const provider = resolveJevProvider(options, env);
-  return { provider, url: options.baseUrl ?? environmentEndpoint(env) ?? PROVIDER_URLS[provider] };
+  return {
+    provider,
+    url: options.baseUrl ?? environmentEndpoint(env, provider) ?? PROVIDER_URLS[provider],
+  };
 }
 
 export interface JevRequest {

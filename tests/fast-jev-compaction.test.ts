@@ -514,6 +514,9 @@ describe('keep signal', () => {
     expect(signal([dropped(calls[0]!), noted(calls[1]!)])).toBe(true);
     expect(signal([])).toBe(true);
     expect(signal([kept(calls[2]!)])).toBe(true);
+    // An empty `judged` set means nothing was dropped, so applying the result is
+    // a no-op — there is no evidence-free prune to guard against.
+    expect(signal(calls.filter(() => false))).toBe(true);
   });
 
   it('reads a real compaction that dropped every call', async () => {

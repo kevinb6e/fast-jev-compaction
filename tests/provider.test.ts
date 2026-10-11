@@ -96,6 +96,13 @@ describe('endpoint from the environment', () => {
       resolveJevEndpoint({}, { TYPESAFE_BASE_URL: 'https://engine.local', TYPESAFE_API_KEY: 't' }),
     ).toEqual({ provider: 'typesafe', url: 'https://engine.local/v1/systemone' });
   });
+
+  it('ignores TYPESAFE_BASE_URL when the OpenRouter key wins, so the key meets its own route', () => {
+    expect(
+      resolveJevEndpoint({}, { OPENROUTER_API_KEY: 'sk-or-v1-abc', TYPESAFE_BASE_URL: 'https://engine.local' })
+        .url,
+    ).toBe(OPENROUTER_SYSTEM_ONE_URL);
+  });
 });
 
 describe('endpointHost', () => {
