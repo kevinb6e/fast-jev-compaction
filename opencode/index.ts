@@ -13,6 +13,7 @@ import type { Context, Plugin } from '@opencode/plugin/promise/plugin';
 import type { SessionCompaction } from '@opencode/plugin/promise/session';
 
 import {
+  applyRequestBudget,
   compact,
   DEFAULT_MODEL,
   estimateTokens,
@@ -125,7 +126,9 @@ export function resolvePluginOptions(
       continue;
     }
   }
-  return resolved;
+  // A model swap has to carry its own context budget; the decision models range
+  // from 7 168 to 524 288 usable request tokens.
+  return applyRequestBudget(resolved);
 }
 
 function toInput(input: unknown): Record<string, unknown> {

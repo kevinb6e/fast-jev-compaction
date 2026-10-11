@@ -20,6 +20,7 @@ import {
   type JevEndpointOptions,
   type JevProvider,
 } from '../src/request.js';
+import { applyRequestBudget } from '../src/models.js';
 import type {
   CompactOptions,
   CompactResult,
@@ -100,7 +101,9 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
   if (baseUrl) config.baseUrl = baseUrl;
   const goal = optionString(options, 'goal');
   if (goal) config.goal = goal;
-  return config;
+  // A model swap has to carry its own context budget: the ceilings differ by
+  // two orders of magnitude across the decision models.
+  return applyRequestBudget(config);
 }
 
 /** A `JevAsker` over the engine's `$.http.fetch`. */
@@ -265,19 +268,29 @@ export async function getCredentials(
   },
   config: HookConfig,
 ): Promise<{ apiKey?: string; provider: JevProvider }> {
-  const lookup = async (name: string): Promise<string | undefined> => {
-    const fromEnv = await $.env.get(name);
-    if (fromEnv) return fromEnv;
-    const settings = await $.settings.read();
-    const env = settings['env'];
-    if (env && typeof env === 'object') {
-      const value = (env as Record<string, unknown>)[name];
-      if (typeof value === 'string' && value) return value;
-    }
-    return undefined;
+  const settings = await $.settings.read();
+  const settingsEnv = settings['env'];
+  const fromSettings = (name: string): string | undefined => {
+    const value =
+      settingsEnv && typeof settingsEnv === 'object'
+        ? (settingsEnv as Record<string, unknown>)[name]
+        : undefined;
+    return typeof value === 'string' && value ? value : undefined;
   };
-  const env: Record<string, string | undefined> = {};
-  for (const name of Object.values(PROVIDER_ENV_KEYS)) env[name] = await lookup(name);
+  const prefer = (fromEnv: string | undefined, name: string): string | undefined =>
+    fromEnv ?? fromSettings(name);
+
+  // `$.env.get` requires a literal name - the engine lists the variables a
+  // module reads by reading its source, so it refuses a computed one. Each
+  // variable is therefore spelled out here; PROVIDER_ENV_KEYS stays the map of
+  // which provider uses which, and the provider test pins the two together.
+  const env: Record<string, string | undefined> = {
+    [PROVIDER_ENV_KEYS.typesafe]: prefer(await $.env.get('TYPESAFE_API_KEY'), 'TYPESAFE_API_KEY'),
+    [PROVIDER_ENV_KEYS.openrouter]: prefer(
+      await $.env.get('OPENROUTER_API_KEY'),
+      'OPENROUTER_API_KEY',
+    ),
+  };
   // A supplied key pins the endpoint; an implicit one is found through `env`.
   const provider = resolveJevProvider(
     { provider: config.provider, baseUrl: config.baseUrl },

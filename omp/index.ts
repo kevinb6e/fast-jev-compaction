@@ -18,6 +18,7 @@ import type {
 } from '@oh-my-pi/pi-coding-agent';
 
 import {
+  applyRequestBudget,
   compact,
   DEFAULT_MODEL,
   estimateTokens,
@@ -111,7 +112,9 @@ export function resolveOmpOptions(
     const value = envNumber(env[name]);
     if (value !== undefined) options[key] = value;
   }
-  return options;
+  // A model swap has to carry its own context budget; the decision models range
+  // from 7 168 to 524 288 usable request tokens.
+  return applyRequestBudget(options);
 }
 
 function textOf(content: unknown): string {

@@ -1,6 +1,6 @@
 {
   "name": "fast-jev-compaction",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Verbatim Jev-guided compaction for Claude Code sessions.",
   "license": "MIT",
   "userConfig": {
@@ -37,14 +37,12 @@
     "maxStateTokens": {
       "type": "number",
       "title": "Maximum Jev state tokens",
-      "description": "Estimated token budget for the conversation state sent with every Jev request.",
-      "default": 25000
+      "description": "Estimated token budget for the conversation state sent with every Jev request. Left unset, it follows the chosen model's measured ceiling."
     },
     "maxRequestTokens": {
       "type": "number",
       "title": "Maximum Jev request tokens",
-      "description": "Estimated token budget for state plus questions in one Jev request.",
-      "default": 30000
+      "description": "Estimated token budget for state plus questions in one Jev request. Left unset, it follows the chosen model's measured ceiling."
     },
     "truncateHeadChars": {
       "type": "number",
