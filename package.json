@@ -1,6 +1,6 @@
 {
   "name": "fast-jev-compaction",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Continuous, verbatim context compaction for LLM agents using TypeSafe's Jev model.",
   "type": "module",
   "license": "MIT",
@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit && npm run typecheck:hooks && npm run typecheck:adapters",
     "test": "vitest run",
     "demo": "tsx examples/demo.ts",
+    "bump": "node scripts/bump.mjs",
     "typecheck:hooks": "tsc -p tsconfig.hooks.json",
     "typecheck:adapters": "tsc -p tsconfig.adapters.json",
     "validate:plugin": "claude plugin validate .claude-plugin/plugin.json"
