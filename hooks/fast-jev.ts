@@ -12,8 +12,13 @@ import { compact, reductionRatio, resolveOptions } from '../src/compact.js';
 import {
   buildJevRequest,
   DEFAULT_MODEL,
+  isJevProvider,
+  missingApiKeyError,
   parseJevResponse,
-  resolveSystemOneUrl,
+  PROVIDER_ENV_KEYS,
+  resolveJevProvider,
+  type JevEndpointOptions,
+  type JevProvider,
 } from '../src/request.js';
 import type {
   CompactOptions,
@@ -47,6 +52,7 @@ export type HookFetch = (url: string, init?: HookFetchInit) => Promise<HookFetch
 
 export type HookConfig = CompactOptions & {
   apiKey?: string;
+  provider?: JevProvider;
   baseUrl?: string;
   compactAtPercent: number;
   minReductionRatio: number;
@@ -88,6 +94,10 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
   };
   const apiKey = optionString(options, 'apiKey');
   if (apiKey) config.apiKey = apiKey;
+  const provider = optionString(options, 'provider');
+  if (isJevProvider(provider)) config.provider = provider;
+  const baseUrl = optionString(options, 'baseUrl');
+  if (baseUrl) config.baseUrl = baseUrl;
   const goal = optionString(options, 'goal');
   if (goal) config.goal = goal;
   return config;
@@ -98,11 +108,11 @@ export function jevAsker(
   fetchFn: HookFetch,
   apiKey: string,
   model: string,
-  baseUrl?: string,
+  endpoint: JevEndpointOptions = {},
 ): JevAsker {
   return {
     async ask(state, questions) {
-      const request = buildJevRequest({ apiKey, model, baseUrl }, state, questions);
+      const request = buildJevRequest({ apiKey, model, ...endpoint }, state, questions);
       const response = await fetchFn(request.url, {
         method: request.method,
         headers: request.headers,
@@ -178,10 +188,13 @@ export async function compactSession(
   config: HookConfig,
   fetchFn: HookFetch,
 ): Promise<SessionCompaction> {
-  if (!config.apiKey) throw new Error('TYPESAFE_API_KEY is not configured');
+  // No environment lookup here: `register` has already resolved the provider
+  // from the engine's env, so an unconfigured run names TypeSafe's key.
+  const provider = resolveJevProvider({ provider: config.provider, baseUrl: config.baseUrl });
+  if (!config.apiKey) throw missingApiKeyError(provider);
   const result = await compact(
     messages,
-    jevAsker(fetchFn, config.apiKey, config.model, config.baseUrl),
+    jevAsker(fetchFn, config.apiKey, config.model, { provider, baseUrl: config.baseUrl }),
     config,
   );
   return { result, messages: toSessionMessages(messages, result.messages) };
@@ -239,49 +252,39 @@ export function decisionLogLines(
   );
 }
 
-type HookEnv = {
-  env: { get: (name: string) => Promise<string | undefined> };
-  settings: { read: () => Promise<Readonly<Record<string, unknown>>> };
-};
-
-async function settingsEnv($: HookEnv): Promise<Record<string, unknown>> {
-  const settings = await $.settings.read();
-  const env = settings['env'];
-  return env && typeof env === 'object' ? (env as Record<string, unknown>) : {};
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value ? value : undefined;
-}
-
 /**
- * The key and endpoint for this compaction. Each variable is read from the
- * process environment first, then from the settings `env` block. `$.env.get`
- * takes string literals only, so every name is spelled out.
+ * Resolves the provider and its key from the plugin's `userConfig`, then the
+ * engine's environment, then the settings `env` block. The provider is picked
+ * from whatever keys are actually set, so exporting only `OPENROUTER_API_KEY`
+ * calls Jev through OpenRouter.
  */
-export async function getConnection(
-  $: HookEnv,
+export async function getCredentials(
+  $: {
+    env: { get: (name: string) => Promise<string | undefined> };
+    settings: { read: () => Promise<Readonly<Record<string, unknown>>> };
+  },
   config: HookConfig,
-): Promise<{ apiKey?: string; baseUrl?: string }> {
-  const env = await settingsEnv($);
-  // `||`, not `??`: an empty variable falls through to the next source.
-  const apiKey =
-    config.apiKey ||
-    (await $.env.get('TYPESAFE_API_KEY')) ||
-    stringValue(env['TYPESAFE_API_KEY']) ||
-    (await $.env.get('OPENROUTER_API_KEY')) ||
-    stringValue(env['OPENROUTER_API_KEY']) ||
-    undefined;
-  const baseUrl = resolveSystemOneUrl({
-    jevBaseUrl: (await $.env.get('JEV_BASE_URL')) || stringValue(env['JEV_BASE_URL']),
-    typesafeBaseUrl:
-      (await $.env.get('TYPESAFE_BASE_URL')) || stringValue(env['TYPESAFE_BASE_URL']),
-    apiKey,
-  });
-  const connection: { apiKey?: string; baseUrl?: string } = {};
-  if (apiKey) connection.apiKey = apiKey;
-  if (baseUrl) connection.baseUrl = baseUrl;
-  return connection;
+): Promise<{ apiKey?: string; provider: JevProvider }> {
+  const lookup = async (name: string): Promise<string | undefined> => {
+    const fromEnv = await $.env.get(name);
+    if (fromEnv) return fromEnv;
+    const settings = await $.settings.read();
+    const env = settings['env'];
+    if (env && typeof env === 'object') {
+      const value = (env as Record<string, unknown>)[name];
+      if (typeof value === 'string' && value) return value;
+    }
+    return undefined;
+  };
+  const env: Record<string, string | undefined> = {};
+  for (const name of Object.values(PROVIDER_ENV_KEYS)) env[name] = await lookup(name);
+  // A supplied key pins the endpoint; an implicit one is found through `env`.
+  const provider = resolveJevProvider(
+    { provider: config.provider, baseUrl: config.baseUrl },
+    config.apiKey === undefined ? env : undefined,
+  );
+  const apiKey = config.apiKey ?? env[PROVIDER_ENV_KEYS[provider]];
+  return apiKey ? { apiKey, provider } : { provider };
 }
 
 function notify(
@@ -303,7 +306,8 @@ export const register: Register = (on: On, options: PluginOptions) => {
 
   on('session.compact', async ($, event, next) => {
     try {
-      const config = { ...configured, ...(await getConnection($, configured)) };
+      const credentials = await getCredentials($, configured);
+      const config = { ...configured, ...credentials };
       const { result, messages } = await compactSession(event.messages, config, async (url, init) => {
         const response = await $.http.fetch(url, init);
         return { status: response.status, ok: response.ok, text: response.text };

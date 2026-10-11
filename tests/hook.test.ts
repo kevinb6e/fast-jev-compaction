@@ -3,7 +3,6 @@ import {
   compactSession,
   decisionLog,
   decisionLogLines,
-  getConnection,
   resolveHookConfig,
   summarize,
   toSessionMessages,
@@ -12,9 +11,6 @@ import {
   applyDecisions,
   collectToolCalls,
   decideCall,
-  OPENROUTER_SYSTEM_ONE_URL,
-  resolveSystemOneUrl,
-  SYSTEM_ONE_URL,
   type Message,
 } from '../src/index.js';
 
@@ -157,99 +153,3 @@ describe('compactSession', () => {
   });
 });
 
-describe('endpoint selection', () => {
-  it('keeps the TypeSafe endpoint when nothing is set', () => {
-    expect(resolveSystemOneUrl({})).toBeUndefined();
-    expect(resolveSystemOneUrl({ apiKey: 'ts-key' })).toBeUndefined();
-  });
-
-  it('uses JEV_BASE_URL as a full endpoint', () => {
-    expect(
-      resolveSystemOneUrl({
-        jevBaseUrl: 'https://gw.example/alpha/decisions',
-        typesafeBaseUrl: 'https://other.example',
-        apiKey: 'sk-or-x',
-      }),
-    ).toBe('https://gw.example/alpha/decisions');
-  });
-
-  it('appends the System One path to TYPESAFE_BASE_URL', () => {
-    expect(resolveSystemOneUrl({ typesafeBaseUrl: 'https://openrouter.ai/api' })).toBe(
-      OPENROUTER_SYSTEM_ONE_URL,
-    );
-    expect(resolveSystemOneUrl({ typesafeBaseUrl: 'https://gw.example/' })).toBe(
-      'https://gw.example/v1/systemone',
-    );
-    expect(resolveSystemOneUrl({ typesafeBaseUrl: 'https://gw.example/v1/systemone' })).toBe(
-      'https://gw.example/v1/systemone',
-    );
-    expect(resolveSystemOneUrl({ typesafeBaseUrl: 'https://gw.example/alpha/decisions/' })).toBe(
-      'https://gw.example/alpha/decisions',
-    );
-  });
-
-  it('routes an OpenRouter key to OpenRouter when no base URL is set', () => {
-    expect(resolveSystemOneUrl({ apiKey: 'sk-or-v1-abc' })).toBe(OPENROUTER_SYSTEM_ONE_URL);
-  });
-});
-
-function fakeHost(processEnv: Record<string, string>, settingsEnv: Record<string, unknown> = {}) {
-  return {
-    env: { get: async (name: string) => processEnv[name] },
-    settings: { read: async () => ({ env: settingsEnv }) },
-  };
-}
-
-describe('getConnection', () => {
-  it('reads the key and base URL from the process environment first', async () => {
-    const connection = await getConnection(
-      fakeHost(
-        { TYPESAFE_API_KEY: 'kjev_x', TYPESAFE_BASE_URL: 'https://gw.example' },
-        { TYPESAFE_API_KEY: 'other', TYPESAFE_BASE_URL: 'https://other.example' },
-      ),
-      resolveHookConfig({}),
-    );
-    expect(connection).toEqual({ apiKey: 'kjev_x', baseUrl: 'https://gw.example/v1/systemone' });
-  });
-
-  it('falls back to the settings env block and to OPENROUTER_API_KEY', async () => {
-    expect(
-      await getConnection(fakeHost({}, { TYPESAFE_API_KEY: 'sk-or-1' }), resolveHookConfig({})),
-    ).toEqual({ apiKey: 'sk-or-1', baseUrl: OPENROUTER_SYSTEM_ONE_URL });
-    expect(
-      await getConnection(
-        fakeHost({ OPENROUTER_API_KEY: 'kjev_y', JEV_BASE_URL: 'https://gw.example/alpha/decisions' }),
-        resolveHookConfig({}),
-      ),
-    ).toEqual({ apiKey: 'kjev_y', baseUrl: 'https://gw.example/alpha/decisions' });
-  });
-
-  it('skips empty variables and uses the next source', async () => {
-    expect(
-      await getConnection(
-        fakeHost({ TYPESAFE_API_KEY: '', TYPESAFE_BASE_URL: '' }, { TYPESAFE_API_KEY: 'sk-or-2' }),
-        resolveHookConfig({}),
-      ),
-    ).toEqual({ apiKey: 'sk-or-2', baseUrl: OPENROUTER_SYSTEM_ONE_URL });
-  });
-
-  it('prefers the apiKey option and leaves the endpoint at its default', async () => {
-    expect(
-      await getConnection(fakeHost({ TYPESAFE_API_KEY: 'env' }), resolveHookConfig({ apiKey: 'opt' })),
-    ).toEqual({ apiKey: 'opt' });
-    expect(await getConnection(fakeHost({}), resolveHookConfig({}))).toEqual({});
-  });
-
-  it('sends compaction requests to the selected endpoint', async () => {
-    const urls: string[] = [];
-    const answer = jevFetch(() => 0.1);
-    const fetchFn = async (url: string, init?: { body?: string }) => {
-      urls.push(url);
-      return answer(url, init);
-    };
-    const base = { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k' };
-    await compactSession(transcript(), base, fetchFn);
-    await compactSession(transcript(), { ...base, baseUrl: OPENROUTER_SYSTEM_ONE_URL }, fetchFn);
-    expect(urls).toEqual([SYSTEM_ONE_URL, OPENROUTER_SYSTEM_ONE_URL]);
-  });
-});
