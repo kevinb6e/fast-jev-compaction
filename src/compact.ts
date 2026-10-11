@@ -26,6 +26,7 @@ import type {
 
 export const DEFAULT_OPTIONS: ResolvedCompactOptions = {
   goal: '',
+  instructions: '',
   keepThreshold: 0.5,
   preserveRecentMessages: 6,
   maxStateTokens: 25_000,
@@ -48,6 +49,7 @@ function finite(value: number | undefined, fallback: number): number {
 export function resolveOptions(options: CompactOptions = {}): ResolvedCompactOptions {
   return {
     goal: options.goal ?? DEFAULT_OPTIONS.goal,
+    instructions: options.instructions ?? DEFAULT_OPTIONS.instructions,
     keepThreshold: finite(options.keepThreshold, DEFAULT_OPTIONS.keepThreshold),
     preserveRecentMessages: Math.max(
       0,

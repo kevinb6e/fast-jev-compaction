@@ -91,8 +91,8 @@ and the default is used. Options are read once when the extension loads.
   model-written summary would be.
 - Images and reasoning are dropped from the rendering; only text, tool calls
   and tool results reach the summary.
-- `event.customInstructions` is not applied: the summary is a transcript, not
-  a model-written document, so summarizer instructions have nothing to steer.
+- `event.customInstructions` are carried into the state's goal, so the decisions
+  know what the compaction is for; they do not rewrite the summary itself.
 - Installing the extension makes Jev the first pass for every compaction,
   including the strategies omp would otherwise run itself (remote, snapcompact,
   …); those run only when Jev falls back.

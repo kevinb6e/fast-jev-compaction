@@ -122,6 +122,20 @@ describe('hook config', () => {
   });
 });
 
+describe('compaction instructions', () => {
+  it('carries the host instructions into the state goal', async () => {
+    const bodies: string[] = [];
+    const config = { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k' };
+    await compactSession(
+      transcript(),
+      { ...config, instructions: 'keep the auth work' },
+      jevFetch(() => 0.9, bodies),
+    );
+    const { state } = JSON.parse(bodies[0]!) as { state: { goal: string } };
+    expect(state.goal).toContain('keep the auth work');
+  });
+});
+
 describe('session message mapping', () => {
   it('returns the engine objects for untouched messages and handle-less copies for rebuilt ones', () => {
     const messages = transcript();

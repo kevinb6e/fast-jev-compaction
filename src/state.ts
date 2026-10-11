@@ -203,6 +203,9 @@ function historyEntries(
   return entries;
 }
 
+/** Characters of one prompt kept when a goal is composed from the conversation. */
+const GOAL_CHARS = 500;
+
 /** The last three user prompts, as the default `goal`. */
 export function goalFromMessages(
   messages: readonly Message[],
@@ -218,8 +221,19 @@ export function goalFromMessages(
         (message.toolResults ?? []).length === 0,
     )
     .slice(-3)
-    .map(({ text }) => truncate(text, 500))
+    .map(({ text }) => truncate(text, GOAL_CHARS))
     .join('\n');
+}
+
+/**
+ * The task plus what the user asked this compaction to keep or drop. The
+ * instructions are bounded like an inferred prompt, so a pasted one cannot make
+ * the state unfittable.
+ */
+function goalWith(goal: string, instructions: string): string {
+  const extra = truncate(instructions.trim(), GOAL_CHARS);
+  if (extra.length === 0) return goal;
+  return goal.length > 0 ? `${goal}\n\n${extra}` : extra;
 }
 
 /**
@@ -233,10 +247,13 @@ export function goalFromMessages(
 export function fitState(
   messages: readonly Message[],
   calls: readonly ToolCall[],
-  options: Pick<ResolvedCompactOptions, 'maxStateTokens' | 'preserveRecentMessages' | 'goal'>,
+  options: Pick<
+    ResolvedCompactOptions,
+    'maxStateTokens' | 'preserveRecentMessages' | 'goal' | 'instructions'
+  >,
   blocks: readonly TextBlock[] = [],
 ): FittedState {
-  const goal = options.goal || goalFromMessages(messages, blocks);
+  const goal = goalWith(options.goal || goalFromMessages(messages, blocks), options.instructions);
   const context = blocks.length > 0 ? STATE_CONTEXT + STATE_CONTEXT_TEXT : STATE_CONTEXT;
   const stateOf = (history: HistoryEntry[]): CompactionState => ({
     context,

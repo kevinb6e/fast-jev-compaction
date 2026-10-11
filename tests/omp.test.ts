@@ -76,6 +76,36 @@ function transcript(): readonly unknown[] {
   ];
 }
 
+describe('compaction instructions', () => {
+  it('carries customInstructions into the state goal', async () => {
+    const states: { goal?: string }[] = [];
+    const recording: JevAsker = {
+      async ask(state, questions) {
+        states.push(state);
+        return {
+          answers: Object.fromEntries(
+            Object.keys(questions).map((key) => [key, { type: 'noul' as const, noul: 0.9 }]),
+          ),
+        };
+      },
+    };
+
+    await handleBeforeCompact(
+      {
+        type: 'session_before_compact',
+        preparation: preparation({ messagesToSummarize: omp(transcript()) }),
+        branchEntries: [],
+        customInstructions: 'keep the auth work',
+      } as never,
+      { ui: { notify: () => {} } },
+      resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1' }),
+      recording,
+    );
+
+    expect(states[0]?.goal).toContain('keep the auth work');
+  });
+});
+
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });

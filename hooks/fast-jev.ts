@@ -328,7 +328,7 @@ export const register: Register = (on: On, options: PluginOptions) => {
   on('session.compact', async ($, event, next) => {
     try {
       const credentials = await getCredentials($, configured);
-      const config = { ...configured, ...credentials };
+      const config = { ...configured, ...credentials, instructions: event.instructions };
       const { result, messages } = await compactSession(event.messages, config, async (url, init) => {
         const response = await $.http.fetch(url, init);
         return { status: response.status, ok: response.ok, text: response.text };
