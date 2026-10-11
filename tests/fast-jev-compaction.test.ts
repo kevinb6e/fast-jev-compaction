@@ -141,6 +141,58 @@ describe('token estimate', () => {
     const json = JSON.stringify({ file_path: '/Users/x/src/a.ts', old_string: 'a = 1;', n: 42 });
     expect(estimateTokens(json)).toBeGreaterThanOrEqual(Math.ceil(json.length / 3));
   });
+
+  /**
+   * The estimator as it stood before dense runs were charged at a floor,
+   * pinned here so the replacement can be proved never to estimate below it.
+   */
+  function previousEstimate(text: string): number {
+    let tokens = 0;
+    for (const [piece] of text.matchAll(/[A-Za-z]+|\d+|[^\sA-Za-z\d]/g)) {
+      const first = piece.charCodeAt(0);
+      if (first >= 48 && first <= 57) tokens += piece.length / 2;
+      else if ((first >= 65 && first <= 90) || (first >= 97 && first <= 122)) {
+        tokens += 1 + Math.floor((piece.length - 1) / 6);
+      } else tokens += 0.9;
+    }
+    return Math.ceil(tokens);
+  }
+
+  it('charges identifiers and blobs at least three characters per token', () => {
+    const digest = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+    const uuid = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    const blob = 'c3RhcnQgdGhlIGNvbXBhY3Rpb24gZnJvbSB0aGUgaG9vayBhbmQga2VlcCBpdCBydW5uaW5n';
+    const starved = 'bcdfghjklmnpqrstvwxyzbcdfghjk'; // no vowels, 21 distinct characters
+
+    expect(estimateTokens(digest)).toBeGreaterThanOrEqual(Math.ceil(digest.length / 3));
+    expect(estimateTokens(uuid)).toBeGreaterThanOrEqual(
+      Math.ceil(uuid.replace(/-/g, '').length / 3),
+    );
+    expect(estimateTokens(blob)).toBeGreaterThanOrEqual(Math.ceil(blob.length / 3));
+    expect(estimateTokens(starved)).toBeGreaterThanOrEqual(Math.ceil(starved.length / 3));
+  });
+
+  it('keeps prose and repeated filler on the word rate', () => {
+    const prose =
+      'The quick brown fox jumps over the lazy dog and reads the transcript again. '.repeat(3);
+    expect(estimateTokens(prose)).toBe(previousEstimate(prose));
+    expect(estimateTokens('x'.repeat(200))).toBe(34);
+    expect(estimateTokens('estimateTokens')).toBe(3);
+    expect(estimateTokens('utf8 base64')).toBeLessThan(6);
+  });
+
+  it('never estimates below the estimator it replaces', () => {
+    const mixed = [
+      'Fix the failing test in src/a.ts, then re-run the suite.',
+      JSON.stringify({ tool_use_id: 'toolu_01A9c8f2e3d4', file_path: '/Users/x/src/module-0.ts', n: 42 }),
+      'sha256=d41d8cd98f00b204e9800998ecf8427e',
+      'c3RhcnQgdGhlIGNvbXBhY3Rpb24gZnJvbSB0aGUgaG9vayBhbmQga2VlcCBpdCBydW5uaW5n',
+      'bcdfghjklmnpqrstvwxyzbcdfghjk',
+      'line 1: ok\nline 2: ok\n'.repeat(10),
+    ].join('\n');
+
+    expect(estimateTokens(mixed)).toBeGreaterThanOrEqual(previousEstimate(mixed));
+  });
 });
 
 describe('code-point safe cuts', () => {

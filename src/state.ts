@@ -21,25 +21,64 @@ const INPUT_CHARS = [1000, 200, 60] as const;
 const TEXT_HEAD = 400;
 const TEXT_TAIL = 150;
 
-const TOKEN_PIECES = /[A-Za-z]+|\d+|[^\sA-Za-z\d]/g;
+const ALNUM_RUN = /[A-Za-z0-9]+/g;
 
 /**
  * Estimates tokens without a tokenizer: a word costs one token per six
  * letters, a digit half a token, any other symbol nine tenths. Calibrated
- * against the usage Jev reports for real transcripts, where it lands 2–18%
- * above the true count; a plain characters-per-token ratio undercounts the
- * JSON-heavy states by up to 40%.
+ * against the usage Jev reports for real transcripts, where that prose rate
+ * lands 2–18% above the true count; a plain characters-per-token ratio
+ * undercounts the JSON-heavy states by up to 40%.
+ *
+ * A run that is unlikely to be a word carries no such calibration — hex
+ * digests, UUIDs and base64 do not compress into dictionary words — so it is
+ * charged at least one token per three characters, which keeps a dense state
+ * from passing a budget check and coming back as `400 max_tokens_exceeded`
+ * (#81). Dense runs can only raise an estimate, never lower it.
  */
 export function estimateTokens(text: string): number {
   let tokens = 0;
-  for (const [piece] of text.matchAll(TOKEN_PIECES)) {
+  let last = 0;
+  for (const match of text.matchAll(ALNUM_RUN)) {
+    const run = match[0];
+    const plain = runTokens(run);
+    tokens +=
+      separatorTokens(text.slice(last, match.index)) +
+      (isDenseRun(run) ? Math.max(plain, run.length / 3) : plain);
+    last = match.index + run.length;
+  }
+  return Math.ceil(tokens + separatorTokens(text.slice(last)));
+}
+
+/** Letters and digits inside one run, at the rates they were charged before. */
+function runTokens(run: string): number {
+  let tokens = 0;
+  for (const [piece] of run.matchAll(/[A-Za-z]+|\d+/g)) {
     const first = piece.charCodeAt(0);
     if (first >= 48 && first <= 57) tokens += piece.length / 2;
-    else if ((first >= 65 && first <= 90) || (first >= 97 && first <= 122)) {
-      tokens += 1 + Math.floor((piece.length - 1) / 6);
-    } else tokens += 0.9;
+    else tokens += 1 + Math.floor((piece.length - 1) / 6);
   }
-  return Math.ceil(tokens);
+  return tokens;
+}
+
+/** Whitespace is free, every other separator costs nine tenths, as before. */
+function separatorTokens(chunk: string): number {
+  return chunk.replace(/\s+/g, '').length * 0.9;
+}
+
+/**
+ * A run unlikely to be made of words: it mixes letters with digits, or it is
+ * long, vowel-starved and varied the way base64 and hashes are. A run of one
+ * repeated character compresses well and stays on the word rate.
+ */
+function isDenseRun(run: string): boolean {
+  if (run.length < 8) return false;
+  const hasDigit = /\d/.test(run);
+  const hasLetter = /[A-Za-z]/.test(run);
+  if (hasDigit) return hasLetter;
+  if (!hasLetter || run.length < 16) return false;
+  const vowels = run.match(/[aeiouAEIOU]/g)?.length ?? 0;
+  return vowels / run.length < 0.25 && new Set(run).size >= 8;
 }
 
 /** True only when the index falls between the halves of a surrogate pair. */
