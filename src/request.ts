@@ -19,6 +19,9 @@ export const PROVIDER_ENV_KEYS: Record<JevProvider, string> = {
   openrouter: 'OPENROUTER_API_KEY',
 };
 
+/** The prefix every OpenRouter key carries, used to spot one in either variable. */
+export const OPENROUTER_KEY_PREFIX = 'sk-or-';
+
 /** Whether a value names a provider; anything else is ignored. */
 export function isJevProvider(value: unknown): value is JevProvider {
   return value === 'typesafe' || value === 'openrouter';
@@ -50,6 +53,11 @@ export function resolveJevProvider(
   if (options.baseUrl) return /openrouter\.ai/i.test(options.baseUrl) ? 'openrouter' : 'typesafe';
   const typesafe = env[PROVIDER_ENV_KEYS.typesafe];
   const openrouter = env[PROVIDER_ENV_KEYS.openrouter];
+  // An OpenRouter key means OpenRouter wherever it is exported: a common setup
+  // puts it in `TYPESAFE_API_KEY`, which would otherwise win and 401.
+  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX) || openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) {
+    return 'openrouter';
+  }
   if (openrouter && !typesafe) return 'openrouter';
   return 'typesafe';
 }

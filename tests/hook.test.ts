@@ -7,7 +7,12 @@ import {
   summarize,
   toSessionMessages,
 } from '../hooks/fast-jev.ts';
-import { applyDecisions, collectToolCalls, decideCall, type Message } from '../src/index.js';
+import {
+  applyDecisions,
+  collectToolCalls,
+  decideCall,
+  type Message,
+} from '../src/index.js';
 
 type SessionMessage = Message & { handle?: string };
 
@@ -147,3 +152,4 @@ describe('compactSession', () => {
     ).rejects.toThrow(/500/);
   });
 });
+

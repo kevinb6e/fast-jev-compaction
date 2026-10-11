@@ -33,6 +33,13 @@ describe('resolveJevProvider', () => {
     expect(resolveJevProvider({}, { OPENROUTER_API_KEY: 'o' })).toBe('openrouter');
     expect(resolveJevProvider({}, { OPENROUTER_API_KEY: 'o', TYPESAFE_API_KEY: 't' })).toBe('typesafe');
   });
+
+  it('infers OpenRouter from an OpenRouter-shaped key in either variable', () => {
+    const key = 'sk-or-v1-abc';
+    expect(resolveJevProvider({}, { TYPESAFE_API_KEY: key })).toBe('openrouter');
+    expect(resolveJevProvider({}, { TYPESAFE_API_KEY: key, OPENROUTER_API_KEY: key })).toBe('openrouter');
+    expect(resolveJevProvider({}, { OPENROUTER_API_KEY: key, TYPESAFE_API_KEY: 't' })).toBe('openrouter');
+  });
 });
 
 describe('resolveJevEndpoint', () => {
