@@ -326,7 +326,7 @@ export async function getCredentials(
   const apiKey = config.apiKey ?? env[PROVIDER_ENV_KEYS[provider]];
   // A configured endpoint wins; otherwise the environment decides where the
   // transcript goes, which is why the outcome line names the host.
-  const baseUrl = config.baseUrl ?? environmentEndpoint(env);
+  const baseUrl = config.baseUrl ?? environmentEndpoint(env, provider);
   return {
     ...(apiKey ? { apiKey } : {}),
     provider,

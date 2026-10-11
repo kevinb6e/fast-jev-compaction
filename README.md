@@ -179,7 +179,9 @@ and, on OpenRouter, `typesafe/jev-1.13`.
 The endpoint can also come from the environment, which is what a key issued for
 another host needs: `JEV_BASE_URL` as a complete endpoint URL, or
 `TYPESAFE_BASE_URL` as the host form TypeSafe's own SDKs take, in which case
-`/v1/systemone` is appended unless it is already there. Precedence is the
+`/v1/systemone` is appended unless it is already there; it is ignored when the
+resolved provider is OpenRouter, whose key must meet the OpenRouter route.
+Precedence is the
 explicit option, then `JEV_BASE_URL`, then `TYPESAFE_BASE_URL`, then the
 provider's own URL. **The transcript goes wherever that endpoint points**, so a
 variable exported for another tool sends it there; every host names the endpoint
