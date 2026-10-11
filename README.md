@@ -135,7 +135,18 @@ configuration.
    - else `keepCall ≥ threshold` → keep the call, truncate the result to its
      first `truncateHeadChars` characters plus a one-line note;
    - else → remove the call together with its result.
-7. The message list is rebuilt: a message that loses all its content is
+7. Text blocks are candidates too, since in a long session the harness-injected
+   bulk (skill bodies, `<local-command-stdout>` echoes, the `## Context Usage`
+   report, system reminders) usually outweighs the tool output. Each block at
+   least `injectedMinChars` long gets one `noul` question and shows in the state
+   as an `[x3: skill ui-ux-pro-max, 44559 chars]` note; a reply at least
+   `replyMinChars` long gets one too, marked `text_block`. Whatever the person
+   typed is never a candidate. A block whose exact content appears again later
+   is dropped as a duplicate without asking Jev. A removed block becomes a
+   one-line note; an abridged reply keeps its first 600 and last 300 characters.
+   Text is rewritten before calls are, and a rebuilt message keeps its tool
+   uses and results as the same objects.
+8. The message list is rebuilt: a message that loses all its content is
    removed, untouched messages are returned as the same objects, and no result
    is ever left without its call.
 
@@ -265,6 +276,8 @@ a source file.
 | `maxStateTokens` | from the model | Estimated token ceiling for the state (25k for `jev-latest`) |
 | `maxRequestTokens` | from the model | Estimated ceiling for state plus one batch of questions (30k for `jev-latest`) |
 | `truncateHeadChars` | `300` | Characters of a dropped tool result retained before its note |
+| `injectedMinChars` | `1000` | Injected blocks (skill bodies, command output, reminders) at least this long are judged by Jev; `0` leaves all text alone |
+| `replyMinChars` | `2000` | Assistant replies at least this long may be abridged to head and tail; `0` never abridges |
 
 `result.stats` reports message and character counts before and after, the
 per-reason decision counts, the state size in estimated tokens, which fitting
