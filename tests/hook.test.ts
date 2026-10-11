@@ -4,6 +4,7 @@ import {
   decisionLog,
   decisionLogLines,
   getCredentials,
+  register,
   resolveHookConfig,
   summarize,
   toSessionMessages,
@@ -119,6 +120,76 @@ describe('hook config', () => {
       injectedMinChars: 0,
       replyMinChars: 500,
     });
+  });
+});
+
+describe('turn.complete guard', () => {
+  type Handler = (
+    ctx: unknown,
+    event: unknown,
+    next: (event: unknown) => Promise<unknown>,
+  ) => Promise<unknown>;
+  type CtxOptions = { percent?: number; usage?: () => Promise<unknown>; compact: () => Promise<void>; logs: string[] };
+
+  function turnHandler(): Handler {
+    const handlers = new Map<string, Handler>();
+    const on = ((name: string, handler: Handler) => void handlers.set(name, handler)) as never;
+    register(on, { apiKey: 'k' } as never);
+    return handlers.get('turn.complete')!;
+  }
+
+  function ctx({ percent = 0, usage, compact, logs }: CtxOptions) {
+    return {
+      session: {
+        usage: usage ?? (async () => ({ context: { percent } })),
+        compact,
+      },
+      ui: { log: (text: string) => void logs.push(text), toast: () => {} },
+    };
+  }
+
+  const next = async (event: unknown) => event;
+
+  it('starts one compaction when two turns complete past the threshold', async () => {
+    const handler = turnHandler();
+    const logs: string[] = [];
+    let compactions = 0;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const usage = async () => {
+      await gate;
+      return { context: { percent: 99 } };
+    };
+    const subject = ctx({ usage, compact: async () => void (compactions += 1), logs });
+
+    const first = handler(subject, {}, next);
+    const second = handler(subject, {}, next);
+    release();
+    await Promise.all([first, second]);
+
+    expect(compactions).toBe(1);
+  });
+
+  it('releases the guard under the threshold and after a failing usage read', async () => {
+    const handler = turnHandler();
+    const logs: string[] = [];
+    let compactions = 0;
+    const compact = async () => void (compactions += 1);
+
+    await handler(ctx({ percent: 10, compact, logs }), {}, next);
+    expect(compactions).toBe(0);
+
+    await handler(
+      ctx({ usage: async () => Promise.reject(new Error('no usage')), compact, logs }),
+      {},
+      next,
+    );
+    expect(logs.some((line) => line.includes('auto-compact skipped'))).toBe(true);
+
+    await handler(ctx({ percent: 99, compact, logs }), {}, next);
+    expect(compactions).toBe(1);
   });
 });
 

@@ -357,10 +357,12 @@ export const register: Register = (on: On, options: PluginOptions) => {
 
   on('turn.complete', async ($, event: TurnCompleteInput, next) => {
     if (compacting) return next(event);
+    // Claimed before the first await: two turns interleaving on the usage read
+    // would otherwise both find the guard clear and both start a compaction.
+    compacting = true;
     try {
       const { context } = await $.session.usage();
       if ((context.percent ?? 0) < configured.compactAtPercent) return next(event);
-      compacting = true;
       await $.session.compact();
     } catch (error) {
       $.ui.log(
