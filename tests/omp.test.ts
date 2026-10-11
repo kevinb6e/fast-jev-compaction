@@ -90,6 +90,8 @@ describe('resolveOmpOptions', () => {
       model: 'jev-latest',
       minReductionRatio: 0.25,
       maxSummaryTokens: 16384,
+      maxStateTokens: 25000,
+      maxRequestTokens: 30000,
     });
   });
 
@@ -128,6 +130,8 @@ describe('resolveOmpOptions', () => {
       model: 'jev-latest',
       minReductionRatio: 0.25,
       maxSummaryTokens: 16384,
+      maxStateTokens: 25000,
+      maxRequestTokens: 30000,
     });
   });
 });

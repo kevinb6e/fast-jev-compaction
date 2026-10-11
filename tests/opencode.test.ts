@@ -91,6 +91,8 @@ describe('resolvePluginOptions', () => {
       model: 'jev-latest',
       minReductionRatio: 0.25,
       maxSummaryTokens: 16384,
+      maxStateTokens: 25000,
+      maxRequestTokens: 30000,
     });
   });
 
@@ -109,6 +111,8 @@ describe('resolvePluginOptions', () => {
       minReductionRatio: 0.25,
       maxSummaryTokens: 32768,
       provider: 'openrouter',
+      maxStateTokens: 25000,
+      maxRequestTokens: 30000,
     });
   });
 
@@ -130,6 +134,8 @@ describe('resolvePluginOptions', () => {
       minReductionRatio: 0.4,
       maxSummaryTokens: 2048,
       provider: 'openrouter',
+      maxStateTokens: 25000,
+      maxRequestTokens: 30000,
       apiKey: 'k',
       baseUrl: 'https://openrouter.ai/api/v1/systemone',
       goal: 'ship it',

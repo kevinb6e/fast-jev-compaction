@@ -164,6 +164,49 @@ without that rule TypeSafe would be chosen and the request would 401.
 `baseUrl` always wins for the URL. The model IDs are `jev-latest`, `jev-1.13`
 and, on OpenRouter, `typesafe/jev-1.13`.
 
+## Choosing a decision model
+
+Jev is one decision model among many. OpenRouter serves a whole class of them
+on the same API, and this library speaks that protocol, so swapping one in is a
+one-line change:
+
+```sh
+export FAST_JEV_MODEL=openai/gpt-6-luna-decisions   # omp and OpenCode
+# the `model` plugin option for Claude Code
+```
+
+**The token budget follows the model.** The usable ceilings differ by two
+orders of magnitude, and the advertised `context_length` cannot size a request:
+`typesafe/jev-1.13` advertises 64 000 tokens and rejects anything above ~31 000.
+The ceilings in `src/models.ts` are therefore measured against the live
+endpoint, one model at a time, by growing the `state` until it answers
+`max_tokens_exceeded` and keeping the largest size that passed:
+
+| Model | Usable request tokens (measured) |
+| --- | ---: |
+| `openai/gpt-6-luna-decisions`, `perplexity/pplx-decider-v1.1-27b` | 524 288 |
+| `upstage/solar-decide`, `upstage/solar-decide-flash` | 491 520 |
+| `cloudflare/clef` | 458 752 |
+| `cloudflare/clef-omni`, `togethercomputer/tev1-4b-experimental` | 245 760 |
+| `nace-ai/drex-v1.5`, `cloudflare/clef-flash` | 122 880 |
+| `liquid/d1`, `inception/mercury-decide`(`:free`) | 61 440 |
+| `microsoft/microsoft-decision-1` | 30 720 |
+| `typesafe/jev-1.13`, `~typesafe/jev-latest`, `jev-latest`, `jev-1.13` | 30 000 |
+| `jaredpalmer/kev-4b` | 7 168 |
+
+`maxStateTokens` and `maxRequestTokens` are then derived for you, and an
+explicit value still wins. An **unlisted model gets 8 192 tokens**: a request
+over the limit fails outright and hands the whole compaction back to the host's
+summarizer, so an unknown model loses context rather than losing Jev. Raise it
+with `maxRequestTokens` once the model's own ceiling is known.
+
+`respan/span-01`, `respan/span-01-lite` and `respan/span-01-lite:free` are
+**not** compatible: they reject this library's structured `state` and require a
+string or a `{input, output}` object.
+
+To add a model, measure it the same way and add one line to
+`DECISION_MODEL_CEILINGS`.
+
 ## Install and usage
 
 ```sh
@@ -212,14 +255,14 @@ a source file.
 | --- | --- | --- |
 | `provider` | inferred | `typesafe` or `openrouter`; inferred from `baseUrl` or the key |
 | `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
-| `model` | `jev-latest` | Jev model name |
+| `model` | `jev-latest` | Decision model name; see [Choosing a decision model](#choosing-a-decision-model) |
 | `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone` or `https://openrouter.ai/api/v1/systemone`) |
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
 | `keepThreshold` | `0.5` | Minimum keep probability for a call or result to stay |
 | `preserveRecentMessages` | `6` | Newest messages never touched (the first is always kept) |
-| `maxStateTokens` | `25000` | Estimated token ceiling for the state |
-| `maxRequestTokens` | `30000` | Estimated ceiling for state plus one batch of questions |
+| `maxStateTokens` | from the model | Estimated token ceiling for the state (25k for `jev-latest`) |
+| `maxRequestTokens` | from the model | Estimated ceiling for state plus one batch of questions (30k for `jev-latest`) |
 | `truncateHeadChars` | `300` | Characters of a dropped tool result retained before its note |
 
 `result.stats` reports message and character counts before and after, the

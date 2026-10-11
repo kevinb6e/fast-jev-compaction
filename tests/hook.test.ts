@@ -3,6 +3,7 @@ import {
   compactSession,
   decisionLog,
   decisionLogLines,
+  getCredentials,
   resolveHookConfig,
   summarize,
   toSessionMessages,
@@ -11,6 +12,7 @@ import {
   applyDecisions,
   collectToolCalls,
   decideCall,
+  PROVIDER_ENV_KEYS,
   type Message,
 } from '../src/index.js';
 
@@ -56,15 +58,55 @@ function jevFetch(answer: (name: string) => number, bodies: string[] = []) {
   };
 }
 
+describe('getCredentials', () => {
+  const host = (asked: string[], values: Record<string, string> = {}) => ({
+    env: {
+      get: async (name: string) => {
+        asked.push(name);
+        return values[name];
+      },
+    },
+    settings: { read: async () => ({ env: {} }) },
+  });
+  const config = { model: 'jev-latest', compactAtPercent: 60, minReductionRatio: 0.25 };
+
+  /**
+   * `$.env.get` refuses a computed name, so the hook spells each variable out
+   * instead of looping over PROVIDER_ENV_KEYS. This pins the two together: a
+   * provider added to the map without a literal call fails here.
+   */
+  it('reads exactly the variables the provider map names', async () => {
+    const asked: string[] = [];
+    await getCredentials(host(asked) as never, config);
+    expect([...asked].sort()).toEqual([...Object.values(PROVIDER_ENV_KEYS)].sort());
+  });
+
+  it('picks OpenRouter from a key in either variable, given no other setting', async () => {
+    const asked: string[] = [];
+    const credentials = await getCredentials(
+      host(asked, { OPENROUTER_API_KEY: 'sk-or-v1-abc' }) as never,
+      config,
+    );
+    expect(credentials).toEqual({ apiKey: 'sk-or-v1-abc', provider: 'openrouter' });
+  });
+
+  it('returns the provider with no key rather than throwing', async () => {
+    expect(await getCredentials(host([]) as never, config)).toEqual({ provider: 'typesafe' });
+  });
+});
+
 describe('hook config', () => {
   it('reads userConfig values and falls back to defaults', () => {
-    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, model: 'jev-latest' });
+    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, model: 'jev-latest', maxStateTokens: 25000, maxRequestTokens: 30000 });
     expect(
       resolveHookConfig({ apiKey: 'k', keepThreshold: 0.3, maxStateTokens: 1000, model: 'jev-x', goal: 'g', compactAtPercent: 'no' }),
     ).toEqual({
       apiKey: 'k',
       keepThreshold: 0.3,
       maxStateTokens: 1000,
+      // 'jev-x' is not a listed decision model, so the request ceiling falls
+      // back rather than assuming the default model's 30 000
+      maxRequestTokens: 8192,
       model: 'jev-x',
       goal: 'g',
       compactAtPercent: 60,
