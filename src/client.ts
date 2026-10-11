@@ -1,15 +1,26 @@
-import { buildJevRequest, parseJevResponse } from './request.js';
+import {
+  buildJevRequest,
+  missingApiKeyError,
+  parseJevResponse,
+  PROVIDER_ENV_KEYS,
+  resolveJevProvider,
+  type JevProvider,
+} from './request.js';
 import type { JevAsker, JevQuestions, JevResponse, JevState } from './types.js';
 
 export interface JevClientOptions {
-  /** Defaults to `process.env.TYPESAFE_API_KEY`. */
+  /** Defaults to the resolved provider's environment variable. */
   apiKey?: string;
   /** Defaults to `jev-latest`. */
   model?: string;
-  /** Defaults to the System One endpoint. */
+  /** Defaults to TypeSafe unless `baseUrl` or the environment says otherwise. */
+  provider?: JevProvider;
+  /** Defaults to the resolved provider's endpoint. */
   baseUrl?: string;
   /** Defaults to the global `fetch`. */
   fetch?: typeof fetch;
+  /** Where keys are looked up; defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
 }
 
 /** Asks Jev over HTTP with the global `fetch` (or an injected one). */
@@ -17,19 +28,38 @@ export class JevClient implements JevAsker {
   private readonly apiKey: string;
   private readonly model: string | undefined;
   private readonly baseUrl: string | undefined;
+  private readonly provider: JevProvider;
   private readonly fetcher: typeof fetch;
 
   constructor(options: JevClientOptions = {}) {
-    this.apiKey = options.apiKey ?? process.env.TYPESAFE_API_KEY ?? '';
+    const env = options.env ?? process.env;
+    // A supplied key pins the endpoint: only an implicit key is found by
+    // inspecting the environment, so tests and callers with their own key
+    // never depend on which variables happen to be exported.
+    this.provider = resolveJevProvider(
+      { provider: options.provider, baseUrl: options.baseUrl },
+      options.apiKey === undefined ? env : undefined,
+    );
+    this.apiKey = options.apiKey ?? env[PROVIDER_ENV_KEYS[this.provider]] ?? '';
     this.model = options.model;
     this.baseUrl = options.baseUrl;
     this.fetcher = options.fetch ?? fetch;
   }
 
+  /** The provider this client resolves to, for logs and error messages. */
+  get resolvedProvider(): JevProvider {
+    return this.provider;
+  }
+
   async ask(state: JevState, questions: JevQuestions): Promise<JevResponse> {
-    if (!this.apiKey) throw new Error('TYPESAFE_API_KEY is not configured');
+    if (!this.apiKey) throw missingApiKeyError(this.provider);
     const request = buildJevRequest(
-      { apiKey: this.apiKey, model: this.model, baseUrl: this.baseUrl },
+      {
+        apiKey: this.apiKey,
+        model: this.model,
+        provider: this.provider,
+        baseUrl: this.baseUrl,
+      },
       state,
       questions,
     );

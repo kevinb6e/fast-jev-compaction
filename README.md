@@ -3,7 +3,7 @@
 Claude Code plugin that replaces the compaction summary with Jev decisions:
 every tool call and result is scored in one fast request, stale ones are
 dropped or truncated, everything kept stays verbatim. Also usable as an npm
-library.
+library, and ships adapters for OpenCode (`opencode/`) and omp (`omp/`).
 
 ## What and why
 
@@ -14,9 +14,10 @@ calls and tool results Jev says are no longer needed, and it asks Jev while
 showing it the whole conversation. User and assistant text stays verbatim and
 in order.
 
-The repository is both an npm package (`src/`) and a Claude Code plugin
-(`hooks/`, `.claude-plugin/`) that uses the package to replace Claude Code's
-built-in compaction summary with the original messages.
+The repository is an npm package (`src/`), a Claude Code plugin (`hooks/`,
+`.claude-plugin/`) that uses the package to replace Claude Code's built-in
+compaction summary with the original messages, and adapters that do the same
+for OpenCode (`opencode/`) and omp (`omp/`).
 
 ## How it works
 
@@ -96,13 +97,31 @@ The building blocks (`collectToolCalls`, `fitState`, `batchCalls`,
 `apiKey` defaults to `process.env.TYPESAFE_API_KEY`. Never commit the key or
 put it in a source file.
 
+## OpenRouter
+
+Jev is also hosted on OpenRouter, and the System One API surface is a drop-in
+base-URL change, so the library can call either provider:
+
+```sh
+export OPENROUTER_API_KEY=...   # alone, it selects OpenRouter
+# or
+export FAST_JEV_PROVIDER=openrouter
+```
+
+Resolution order: an explicit `provider` option, then a `baseUrl` containing
+`openrouter.ai`, then the environment (a lone `OPENROUTER_API_KEY` selects
+OpenRouter; `TYPESAFE_API_KEY` always wins when both are set), then TypeSafe.
+`baseUrl` always wins for the URL. The model IDs are `jev-latest`, `jev-1.13`
+and `typesafe/jev-1.13`.
+
 ## Options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `apiKey` | `TYPESAFE_API_KEY` | TypeSafe API key (`compactMessages`/`JevClient`) |
+| `provider` | inferred | `typesafe` or `openrouter`; inferred from `baseUrl` or the environment |
+| `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
 | `model` | `jev-latest` | Jev model name |
-| `baseUrl` | `https://api.typesafe.ai/v1/systemone` | System One endpoint |
+| `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone` or `https://openrouter.ai/api/v1/systemone`) |
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
 | `keepThreshold` | `0.5` | Minimum keep probability for a call or result to stay |
@@ -162,11 +181,57 @@ To run from a checkout without installing: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 
 from the repository root. No publishing step is required; the marketplace is
 just the repo's `.claude-plugin/marketplace.json`.
 
+## OpenCode plugin
+
+`opencode/index.ts` is an OpenCode (V2) plugin: it hooks `compaction`, renders
+Jev's pruned transcript to text and returns it as `event.result`, skipping
+OpenCode's model call. The previous summary is carried forward (read from a
+`compaction` part in the transcript or from the session context), and the hook
+leaves `event.result` unset — which runs OpenCode's built-in summarizer —
+when Jev cannot shrink the transcript enough, the summary would exceed
+`maxSummaryTokens`, the previous checkpoint is unreadable, or Jev fails.
+See [`opencode/README.md`](opencode/README.md) for install and configuration.
+
+## omp extension
+
+`omp/index.ts` is an omp (oh-my-pi) extension: it registers
+`session_before_compact`, renders Jev's pruned transcript to text and returns
+it as the compaction summary, skipping omp's summarizer. The previous summary
+is prepended, the turn prefix is summarised as a second request on a split
+turn, and the cumulative `<files>` tag and `details` file lists are kept up to
+date. The handler returns `undefined` — which runs omp's own summarizer — on
+the same fallback conditions. See [`omp/README.md`](omp/README.md) for install
+and configuration.
+
+## Verifying it works
+
+Every harness falls back to its own summarizer when Jev fails — no key, the
+wrong endpoint, a transcript too short to shrink — so a broken setup looks
+exactly like a working one. Each adapter names itself when it does act:
+
+| Harness | Where the evidence lands |
+| --- | --- |
+| Claude Code | Run `claude --debug`; the log in `~/.claude/debug/` carries `hooks module fast-jev-compaction ... events: session.compact,turn.complete` when it loads, and the toast reads `kept N/M messages, no summary (…)` when it replaces the summary. `claude plugin details` reports `Hooks (0)` for function-hook modules — cosmetic, not a load failure. |
+| OpenCode | `[fast-jev-compaction]` lines on the console. |
+| omp | `~/.omp/logs/omp.<date>.*.log`: `jev context: <before>-><after> chars, dropped=…`, or `jev context skipped: <reason>` when it decides not to act. |
+
+Before blaming a harness, check the endpoint and key on their own:
+
+```ts
+import { buildJevRequest } from 'fast-jev-compaction';
+const request = buildJevRequest({ apiKey, model, baseUrl }, state, questions);
+// POST request.url with request.headers/request.body: expect HTTP 200 and an `answers` object.
+```
+
+A 401 means the provider and the key disagree — the commonest cause here is
+`TYPESAFE_API_KEY` holding an OpenRouter key, since it wins whenever both are
+set. See [OpenRouter](#openrouter).
+
 ## Development
 
 ```sh
 npm install
-npm run typecheck        # library + hook
+npm run typecheck        # library + hook + adapters
 npm test
 npm run build
 npm run validate:plugin  # claude plugin validate
