@@ -17,6 +17,7 @@ import {
   compact,
   DEFAULT_MODEL,
   estimateTokens,
+  hasKeepSignal,
   isJevProvider,
   JevClient,
   renderTranscript,
@@ -42,6 +43,8 @@ export interface OpenCodeOptions extends CompactOptions {
   model: string;
   /** Minimum shrink of the rendered transcript, else the host summarizer runs. */
   minReductionRatio: number;
+  /** A run that kept nothing goes to the host summarizer, unless this is off. */
+  requireKeepSignal: boolean;
   /** Token ceiling for the rendered summary, else the host summarizer runs. */
   maxSummaryTokens: number;
 }
@@ -49,6 +52,7 @@ export interface OpenCodeOptions extends CompactOptions {
 export const OPENCODE_DEFAULTS = {
   model: DEFAULT_MODEL,
   minReductionRatio: 0.25,
+  requireKeepSignal: true,
   maxSummaryTokens: 16384,
 } as const;
 
@@ -84,6 +88,15 @@ function optionNumber(
   return fallback;
 }
 
+function optionBool(
+  options: Readonly<Record<string, unknown>>,
+  key: string,
+  fallback: boolean,
+): boolean {
+  const value = options[key];
+  return typeof value === 'boolean' ? value : fallback;
+}
+
 function string(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
@@ -109,6 +122,11 @@ export function resolvePluginOptions(
       env,
       'FAST_JEV_MAX_SUMMARY_TOKENS',
       OPENCODE_DEFAULTS.maxSummaryTokens,
+    ),
+    requireKeepSignal: optionBool(
+      options,
+      'requireKeepSignal',
+      OPENCODE_DEFAULTS.requireKeepSignal,
     ),
   };
   const provider = string(options['provider']) ?? env['FAST_JEV_PROVIDER'];
@@ -298,6 +316,9 @@ export async function buildSummary(
   const pruned = renderTranscript(result.messages);
   const reduction =
     original.length > 0 ? (original.length - pruned.length) / original.length : 0;
+  if (options.requireKeepSignal && !hasKeepSignal(result)) {
+    return { reason: 'no keep signal: Jev dropped every call it judged', result, reduction };
+  }
   if (reduction < options.minReductionRatio) {
     return {
       reason: `reduction ${percent(reduction)} below ${percent(options.minReductionRatio)} minimum`,

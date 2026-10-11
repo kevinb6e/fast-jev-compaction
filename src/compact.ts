@@ -299,6 +299,18 @@ export function reductionRatio(result: Pick<CompactResult, 'stats'>): number {
   return charsBefore === 0 ? 0 : (charsBefore - charsAfter) / charsBefore;
 }
 
+/**
+ * False only for a run that judged candidates and dropped every one of them:
+ * the largest reduction this library can produce is also the least
+ * informative, and applying it leaves the narration with no evidence behind it.
+ * A `drop_result` counts as a signal: that call survives as a note the
+ * assistant can re-run from.
+ */
+export function hasKeepSignal(result: Pick<CompactResult, 'decisions'>): boolean {
+  const judged = result.decisions.filter((decision) => decision.reason !== 'pinned');
+  return judged.length === 0 || judged.some((decision) => decision.action !== 'drop_call');
+}
+
 function count<D extends { reason: string }>(decisions: readonly D[], reason: D['reason']): number {
   return decisions.filter((decision) => decision.reason === reason).length;
 }

@@ -9,6 +9,7 @@ import {
   decideCall,
   estimateTokens,
   fitState,
+  hasKeepSignal,
   JevClient,
   parseJevResponse,
   reductionRatio,
@@ -340,6 +341,43 @@ describe('decisions', () => {
     expect(noHead[2]?.toolResults?.[0]?.text).toBe(
       `[fast-jev-compaction truncated ${total} chars of this tool result; re-run the tool if needed]`,
     );
+  });
+});
+
+describe('keep signal', () => {
+  const options = { keepThreshold: 0.5 };
+
+  it('reports a signal for every run in which something survived', () => {
+    const calls = collectToolCalls(transcript(), 3);
+    const dropped = (call: ToolCall) => decideCall(call, { keepCall: 0.1, keepResult: 0.1 }, options);
+    const kept = (call: ToolCall) => decideCall(call, { keepCall: 0.9, keepResult: 0.9 }, options);
+    const noted = (call: ToolCall) => decideCall(call, { keepCall: 0.9, keepResult: 0.1 }, options);
+    const signal = (decisions: ReturnType<typeof dropped>[]) => hasKeepSignal({ decisions });
+
+    expect(signal(calls.map(dropped))).toBe(false);
+    expect(signal([dropped(calls[0]!), kept(calls[1]!)])).toBe(true);
+    expect(signal([dropped(calls[0]!), noted(calls[1]!)])).toBe(true);
+    expect(signal([])).toBe(true);
+    expect(signal([kept(calls[2]!)])).toBe(true);
+  });
+
+  it('reads a real compaction that dropped every call', async () => {
+    const allDropped = await compact(transcript(), fakeJev(() => 0.1), {
+      ...resolveOptions(),
+      preserveRecentMessages: 0,
+    });
+    expect(allDropped.decisions.map((decision) => decision.action)).toEqual([
+      'drop_call',
+      'drop_call',
+      'drop_call',
+    ]);
+    expect(hasKeepSignal(allDropped)).toBe(false);
+
+    const someKept = await compact(transcript(), fakeJev(() => 0.9), {
+      ...resolveOptions(),
+      preserveRecentMessages: 0,
+    });
+    expect(hasKeepSignal(someKept)).toBe(true);
   });
 });
 

@@ -4,6 +4,7 @@ import {
   decisionLog,
   decisionLogLines,
   getCredentials,
+  hookFallbackReason,
   resolveHookConfig,
   summarize,
   toSessionMessages,
@@ -97,7 +98,7 @@ describe('getCredentials', () => {
 
 describe('hook config', () => {
   it('reads userConfig values and falls back to defaults', () => {
-    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, model: 'jev-latest', maxStateTokens: 25000, maxRequestTokens: 30000 });
+    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, requireKeepSignal: true, model: 'jev-latest', maxStateTokens: 25000, maxRequestTokens: 30000 });
     expect(
       resolveHookConfig({ apiKey: 'k', keepThreshold: 0.3, maxStateTokens: 1000, model: 'jev-x', goal: 'g', compactAtPercent: 'no' }),
     ).toEqual({
@@ -111,6 +112,7 @@ describe('hook config', () => {
       goal: 'g',
       compactAtPercent: 60,
       minReductionRatio: 0.25,
+      requireKeepSignal: true,
     });
   });
 
@@ -119,6 +121,28 @@ describe('hook config', () => {
       injectedMinChars: 0,
       replyMinChars: 500,
     });
+  });
+});
+
+describe('keep signal', () => {
+  it('hands a run that kept nothing back to the summarizer', async () => {
+    const config = {
+      ...resolveHookConfig({ preserveRecentMessages: 1, minReductionRatio: 0 }),
+      apiKey: 'k',
+    };
+    const dropped = (await compactSession(transcript(), config, jevFetch(() => 0.1))).result;
+    const survivor = (
+      await compactSession(transcript(), config, jevFetch((name) => (name === 'call_t2' ? 0.9 : 0.1)))
+    ).result;
+
+    expect(hookFallbackReason(dropped, config)).toMatch(/^no keep signal \(/);
+    expect(hookFallbackReason(survivor, config)).toBeNull();
+    expect(hookFallbackReason(dropped, { ...config, requireKeepSignal: false })).toBeNull();
+  });
+
+  it('defaults on and can be turned off through userConfig', () => {
+    expect(resolveHookConfig({}).requireKeepSignal).toBe(true);
+    expect(resolveHookConfig({ requireKeepSignal: false }).requireKeepSignal).toBe(false);
   });
 });
 
