@@ -18,6 +18,9 @@ function message(role: Message['role'], text: string): Message {
 
 type Seen = { state: unknown; questions: string[] };
 
+/** A lone half of a surrogate pair: what the decision endpoint rejects. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
 function fakeJev(answer: (name: string) => number, seen: Seen[] = []): JevAsker {
   return {
     async ask(state, questions: JevQuestions) {
@@ -89,6 +92,31 @@ describe('text blocks', () => {
     expect(result.messages[5]!.text).toBe(messages[5]!.text);
     const asked = seen.flatMap((s) => s.questions);
     expect(asked).toEqual(['text_x1', 'text_x2', 'text_x4']);
+  });
+
+  it('abridges a long reply around surrogate pairs, and leaves aligned cuts alone', async () => {
+    const straddling = `${'a'.repeat(599)}🎯${'b'.repeat(3000)}🚀${'c'.repeat(299)}`;
+    const result = await compact(
+      [message('user', 'faça'), message('assistant', straddling)],
+      fakeJev(() => 0.1),
+      { ...resolveOptions(), preserveRecentMessages: 0 },
+    );
+    const abridged = result.messages[1]?.text ?? '';
+
+    expect(abridged).toBe(
+      `${'a'.repeat(599)}\n[fast-jev-compaction abridged 3002 chars of this reply]\n🚀${'c'.repeat(299)}`,
+    );
+    expect(LONE_SURROGATE.test(abridged)).toBe(false);
+
+    const aligned = `${'a'.repeat(600)}🎯${'b'.repeat(3000)}`;
+    const plain = await compact(
+      [message('user', 'faça'), message('assistant', aligned)],
+      fakeJev(() => 0.1),
+      { ...resolveOptions(), preserveRecentMessages: 0 },
+    );
+    expect(plain.messages[1]?.text).toBe(
+      `${'a'.repeat(600)}\n[fast-jev-compaction abridged ${aligned.length - 900} chars of this reply]\n${'b'.repeat(300)}`,
+    );
   });
 
   it('shows injected blocks to Jev as an id note, not their contents', async () => {

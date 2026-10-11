@@ -1,5 +1,5 @@
 import { noulAnswer } from './request.js';
-import { collectToolCalls, estimateTokens, fitState } from './state.js';
+import { collectToolCalls, estimateTokens, fitState, safeCutEnd } from './state.js';
 import {
   applyTextDecisions,
   collectTextBlocks,
@@ -190,8 +190,9 @@ async function askBatch(
 
 function truncatedResultText(text: string, isError: boolean, headChars: number): string {
   if (text.length <= headChars + 120) return text;
-  const head = headChars > 0 ? `${text.slice(0, headChars)}\n` : '';
-  return `${head}[fast-jev-compaction truncated ${text.length - headChars} chars of this tool result${
+  const end = headChars > 0 ? safeCutEnd(text, headChars) : 0;
+  const head = end > 0 ? `${text.slice(0, end)}\n` : '';
+  return `${head}[fast-jev-compaction truncated ${text.length - end} chars of this tool result${
     isError ? ' (error)' : ''
   }; re-run the tool if needed]`;
 }
