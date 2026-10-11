@@ -24,6 +24,7 @@ import {
   endpointHost,
   environmentEndpoint,
   estimateTokens,
+  hasKeepSignal,
   isJevProvider,
   JevClient,
   renderTranscript,
@@ -58,6 +59,8 @@ export interface OmpOptions extends CompactOptions {
   model: string;
   /** Minimum shrink of the rendered transcript, else omp's summarizer runs. */
   minReductionRatio: number;
+  /** A run that kept nothing goes to omp's summarizer, unless this is off. */
+  requireKeepSignal: boolean;
   /** Token ceiling for the rendered summary, else omp's summarizer runs. */
   maxSummaryTokens: number;
 }
@@ -65,6 +68,7 @@ export interface OmpOptions extends CompactOptions {
 export const OMP_DEFAULTS = {
   model: DEFAULT_MODEL,
   minReductionRatio: 0.25,
+  requireKeepSignal: true,
   maxSummaryTokens: 16384,
 } as const;
 
@@ -93,6 +97,14 @@ function envNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/** `1`/`true`/`yes` and `0`/`false`/`no`; anything else leaves the default. */
+function envBool(value: string | undefined): boolean | undefined {
+  const text = value?.trim().toLowerCase();
+  if (text === '1' || text === 'true' || text === 'yes') return true;
+  if (text === '0' || text === 'false' || text === 'no') return false;
+  return undefined;
+}
+
 /** Reads the `FAST_JEV_*` environment; anything missing takes the defaults. */
 export function resolveOmpOptions(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -100,6 +112,8 @@ export function resolveOmpOptions(
   const options: OmpOptions = {
     model: env['FAST_JEV_MODEL'] || OMP_DEFAULTS.model,
     minReductionRatio: envNumber(env['FAST_JEV_MIN_REDUCTION']) ?? OMP_DEFAULTS.minReductionRatio,
+    requireKeepSignal:
+      envBool(env['FAST_JEV_REQUIRE_KEEP_SIGNAL']) ?? OMP_DEFAULTS.requireKeepSignal,
     maxSummaryTokens:
       envNumber(env['FAST_JEV_MAX_SUMMARY_TOKENS']) ?? OMP_DEFAULTS.maxSummaryTokens,
   };
@@ -299,6 +313,9 @@ export async function buildSummary(
   const prunedTurn = turnResult ? renderTranscript(turnResult.messages) : '';
   const reduction =
     originalLength > 0 ? (originalLength - (prunedBody.length + prunedTurn.length)) / originalLength : 0;
+  if (options.requireKeepSignal && !hasKeepSignal(result)) {
+    return { reason: 'no keep signal: Jev dropped every call it judged', result, reduction, files };
+  }
   if (reduction < options.minReductionRatio) {
     return {
       reason: `reduction ${percent(reduction)} below ${percent(options.minReductionRatio)} minimum`,

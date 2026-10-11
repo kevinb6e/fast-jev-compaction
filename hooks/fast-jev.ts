@@ -8,7 +8,7 @@ import type {
   TurnCompleteInput,
 } from 'claude-code';
 
-import { compact, reductionRatio, resolveOptions } from '../src/compact.js';
+import { compact, hasKeepSignal, reductionRatio, resolveOptions } from '../src/compact.js';
 import {
   buildJevRequest,
   DEFAULT_MODEL,
@@ -36,6 +36,7 @@ import type {
 const HOOK_DEFAULTS = {
   compactAtPercent: 60,
   minReductionRatio: 0.25,
+  requireKeepSignal: true,
   model: DEFAULT_MODEL,
 };
 
@@ -60,6 +61,7 @@ export type HookConfig = CompactOptions & {
   baseUrl?: string;
   compactAtPercent: number;
   minReductionRatio: number;
+  requireKeepSignal: boolean;
   model: string;
 };
 
@@ -71,6 +73,11 @@ function optionNumber(options: PluginOptions, key: string, fallback: number): nu
 function optionString(options: PluginOptions, key: string): string | undefined {
   const value = options[key];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function optionBool(options: PluginOptions, key: string, fallback: boolean): boolean {
+  const value = options[key];
+  return typeof value === 'boolean' ? value : fallback;
 }
 
 /** Reads the plugin's `userConfig` values; anything missing takes the defaults. */
@@ -95,6 +102,11 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
       options,
       'minReductionRatio',
       HOOK_DEFAULTS.minReductionRatio,
+    ),
+    requireKeepSignal: optionBool(
+      options,
+      'requireKeepSignal',
+      HOOK_DEFAULTS.requireKeepSignal,
     ),
     model: optionString(options, 'model') ?? HOOK_DEFAULTS.model,
   };
@@ -335,6 +347,20 @@ function notify(
   $.ui.toast(text, { timeoutMs: 15_000 });
 }
 
+/** Why the event goes back to the host's summarizer, or null to apply the prune. */
+export function hookFallbackReason(
+  result: CompactResult,
+  config: Pick<HookConfig, 'minReductionRatio' | 'requireKeepSignal'>,
+  host?: string,
+): string | null {
+  if (config.requireKeepSignal && !hasKeepSignal(result)) {
+    return `no keep signal (${summarize(result, host)})`;
+  }
+  return reductionRatio(result) < config.minReductionRatio
+    ? `below ${percent(config.minReductionRatio)} minimum: ${summarize(result, host)}`
+    : null;
+}
+
 export const register: Register = (on: On, options: PluginOptions) => {
   const configured = resolveHookConfig(options);
   let compacting = false;
@@ -351,11 +377,9 @@ export const register: Register = (on: On, options: PluginOptions) => {
       const host = endpointHost(
         resolveJevEndpoint({ provider: config.provider, baseUrl: config.baseUrl }).url,
       );
-      if (reductionRatio(result) < config.minReductionRatio) {
-        notify(
-          $,
-          `fallback to built-in summary (below ${percent(config.minReductionRatio)} minimum: ${summarize(result, host)})`,
-        );
+      const reason = hookFallbackReason(result, config, host);
+      if (reason) {
+        notify($, `fallback to built-in summary (${reason})`);
         return next(event);
       }
       notify(

@@ -25,7 +25,8 @@ messages.
 Each adapter is a thin layer over the shared core. It hands the harness's
 compaction hook a Jev-pruned transcript, and steps aside — leaving the
 harness's own summarizer to run — when Jev fails, the history is too short to
-shrink, or the reduction is below `minReductionRatio`. Nothing about the
+shrink, the reduction is below `minReductionRatio`, or Jev kept none of the
+calls it judged. Nothing about the
 adapter changes the scoring; see [How it works](#how-it-works).
 
 | Harness | Entry point | Installed as |
@@ -299,7 +300,8 @@ The OpenCode and omp adapters add their own options on top (`maxSummaryTokens`,
 ## Verifying it works
 
 Every harness falls back to its own summarizer when Jev fails — no key, the
-wrong endpoint, a transcript too short to shrink — so a broken setup looks
+wrong endpoint, a transcript too short to shrink, or a decision that would
+delete every candidate — so a broken setup looks
 exactly like a working one. Each adapter names itself when it does act:
 
 | Harness | Where the evidence lands |

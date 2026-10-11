@@ -34,6 +34,12 @@
       "description": "Minimum estimated character reduction required to replace history.",
       "default": 0.25
     },
+    "requireKeepSignal": {
+      "type": "boolean",
+      "title": "Require a keep signal",
+      "description": "Fall back to the built-in summarizer when Jev drops every tool call it judged, rather than applying the largest possible reduction with no evidence left behind.",
+      "default": true
+    },
     "maxStateTokens": {
       "type": "number",
       "title": "Maximum Jev state tokens",

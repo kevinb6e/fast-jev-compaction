@@ -55,6 +55,10 @@ README, "OpenRouter").
 
 The extension returns `undefined`, which runs omp's own summarizer, when:
 
+- Jev judged at least one tool call and dropped every one of them: the largest
+  reduction available is also the one that leaves the narration with no evidence
+  behind it, so it is treated as no answer at all. `FAST_JEV_REQUIRE_KEEP_SIGNAL`
+  set to a false value applies the prune anyway;
 - the reduction is below `FAST_JEV_MIN_REDUCTION` (short sessions, or a
   transcript with little to drop);
 - the rendered summary exceeds `FAST_JEV_MAX_SUMMARY_TOKENS` (it is a full
@@ -79,6 +83,7 @@ summary is reported with `'info'`.
 | `FAST_JEV_MAX_REQUEST_TOKENS` | `30000` | Estimated ceiling for state plus one batch of questions |
 | `FAST_JEV_TRUNCATE_HEAD_CHARS` | `300` | Characters of a dropped tool result retained before its note |
 | `FAST_JEV_MIN_REDUCTION` | `0.25` | Minimum shrink of the rendered transcript |
+| `FAST_JEV_REQUIRE_KEEP_SIGNAL` | `true` | Fall back when Jev drops every call it judged, rather than apply the largest possible reduction |
 | `FAST_JEV_MAX_SUMMARY_TOKENS` | `16384` | Estimated token ceiling for the summary |
 
 Malformed values (an unknown provider, a non-numeric threshold) are ignored

@@ -90,6 +90,7 @@ describe('resolvePluginOptions', () => {
     expect(resolvePluginOptions({}, {})).toEqual({
       model: 'jev-latest',
       minReductionRatio: 0.25,
+      requireKeepSignal: true,
       maxSummaryTokens: 16384,
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
@@ -109,6 +110,7 @@ describe('resolvePluginOptions', () => {
     ).toEqual({
       model: 'typesafe/jev-1.13',
       minReductionRatio: 0.25,
+      requireKeepSignal: true,
       maxSummaryTokens: 32768,
       provider: 'openrouter',
       maxStateTokens: 25000,
@@ -132,6 +134,7 @@ describe('resolvePluginOptions', () => {
     ).toEqual({
       model: 'jev-1.13',
       minReductionRatio: 0.4,
+      requireKeepSignal: true,
       maxSummaryTokens: 2048,
       provider: 'openrouter',
       maxStateTokens: 25000,
@@ -143,6 +146,7 @@ describe('resolvePluginOptions', () => {
     });
 
     expect(resolvePluginOptions({ provider: 'openai' }, {}).provider).toBeUndefined();
+    expect(resolvePluginOptions({ requireKeepSignal: false }, {}).requireKeepSignal).toBe(false);
   });
 });
 
@@ -307,12 +311,26 @@ describe('buildSummary', () => {
     expect(outcome.reason).toMatch(/provider-encrypted/);
   });
 
+  it('falls back when Jev drops every call it judged', async () => {
+    const dropped = await buildSummary(host(transcript()), options(), {}, asker(() => 0.1));
+    expect(dropped.summary).toBeUndefined();
+    expect(dropped.reason).toMatch(/no keep signal/);
+
+    const allowed = await buildSummary(
+      host(transcript()),
+      options({ requireKeepSignal: false }),
+      {},
+      asker(() => 0.1),
+    );
+    expect(allowed.summary).toBeDefined();
+  });
+
   it('falls back when the rendered summary is too large for the slot', async () => {
     const outcome = await buildSummary(
       host(transcript()),
       options({ maxSummaryTokens: 4 }),
       {},
-      asker(() => 0.1),
+      asker((name) => (name === 'call_t2' || name === 'result_t2' ? 0.9 : 0.1)),
     );
     expect(outcome.summary).toBeUndefined();
     expect(outcome.reason).toMatch(/exceeds 4/);

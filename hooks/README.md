@@ -52,6 +52,7 @@ The plugin declares these `userConfig` values in
 | `preserveRecentMessages` | `6` |
 | `compactAtPercent` | `60` |
 | `minReductionRatio` | `0.25` |
+| `requireKeepSignal` | `true` |
 | `maxStateTokens` | `25000` |
 | `maxRequestTokens` | `30000` |
 | `truncateHeadChars` | `300` |
@@ -72,15 +73,20 @@ environments when no `baseUrl` is set, so the transcript follows an endpoint
 exported for another tool; the toast names the host it went to. See the root
 README, "Providers".
 
-Every option except `apiKey`, `compactAtPercent`, `minReductionRatio` and
-`model` is passed straight to the library; see the root README for what they
-do. The event's `instructions` (whatever the user typed after `/compact`) are
-carried into the state's goal, so the decisions know what the compaction is for.
-The `session.compact` hook runs the Jev requests concurrently. If Jev fails,
-the response is malformed, the key is unavailable, the history cannot be
-fitted into the state budget, or the estimated reduction is below
-`minReductionRatio`, the hook logs a fallback and delegates to Claude Code's
-built-in compaction. The outcome is shown as a toast and logged with the
+Every option except `apiKey`, `compactAtPercent`, `minReductionRatio`,
+`requireKeepSignal` and `model` is passed straight to the library; see the root
+README for what they do. The event's `instructions` (whatever the user typed
+after `/compact`) are carried into the state's goal, so the decisions know what
+the compaction is for. The `session.compact` hook runs the Jev requests
+concurrently. If Jev fails, the response is malformed, the key is unavailable,
+the history cannot be fitted into the state budget, Jev kept none of the calls
+it judged, or the estimated reduction is below `minReductionRatio`, the hook
+logs a fallback and delegates to Claude Code's built-in compaction. The last
+two are the trade `requireKeepSignal` makes: with it on, a run that would
+delete every candidate — the largest reduction the library can produce, and the
+one that leaves the narration with no evidence behind it — falls back instead,
+so an install that worked before may summarize more often. Set it to `false` to
+apply those prunes again. The outcome is shown as a toast and logged with the
 reduction, per-reason counts, state size and request count; a per-call
 `decisions:` line with both probabilities is logged for diagnosis. The
 `turn.complete` hook requests

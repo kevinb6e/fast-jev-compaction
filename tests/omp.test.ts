@@ -149,6 +149,7 @@ describe('resolveOmpOptions', () => {
     expect(resolveOmpOptions({})).toEqual({
       model: 'jev-latest',
       minReductionRatio: 0.25,
+      requireKeepSignal: true,
       maxSummaryTokens: 16384,
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
@@ -169,6 +170,7 @@ describe('resolveOmpOptions', () => {
         FAST_JEV_MAX_REQUEST_TOKENS: '5000',
         FAST_JEV_TRUNCATE_HEAD_CHARS: '120',
         FAST_JEV_MIN_REDUCTION: '0.4',
+        FAST_JEV_REQUIRE_KEEP_SIGNAL: 'false',
         FAST_JEV_MAX_SUMMARY_TOKENS: '2048',
       }),
     ).toEqual({
@@ -183,12 +185,20 @@ describe('resolveOmpOptions', () => {
       maxRequestTokens: 5000,
       truncateHeadChars: 120,
       minReductionRatio: 0.4,
+      requireKeepSignal: false,
       maxSummaryTokens: 2048,
     });
 
-    expect(resolveOmpOptions({ FAST_JEV_PROVIDER: 'openai', FAST_JEV_MIN_REDUCTION: 'lots' })).toEqual({
+    expect(
+      resolveOmpOptions({
+        FAST_JEV_PROVIDER: 'openai',
+        FAST_JEV_MIN_REDUCTION: 'lots',
+        FAST_JEV_REQUIRE_KEEP_SIGNAL: 'maybe',
+      }),
+    ).toEqual({
       model: 'jev-latest',
       minReductionRatio: 0.25,
+      requireKeepSignal: true,
       maxSummaryTokens: 16384,
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
@@ -321,11 +331,28 @@ describe('buildSummary', () => {
     expect(outcome.reason).toMatch(/below 25% minimum/);
   });
 
+  it('falls back when Jev drops every call it judged', async () => {
+    const outcome = await buildSummary(
+      preparation({ messagesToSummarize: omp(transcript()) }),
+      resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1' }),
+      asker(() => 0.1),
+    );
+    expect(outcome.summary).toBeUndefined();
+    expect(outcome.reason).toMatch(/no keep signal/);
+
+    const allowed = await buildSummary(
+      preparation({ messagesToSummarize: omp(transcript()) }),
+      resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1', FAST_JEV_REQUIRE_KEEP_SIGNAL: 'false' }),
+      asker(() => 0.1),
+    );
+    expect(allowed.summary).toBeDefined();
+  });
+
   it('falls back when the rendered summary is too large for the slot', async () => {
     const outcome = await buildSummary(
       preparation({ messagesToSummarize: omp(transcript()) }),
       resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1', FAST_JEV_MAX_SUMMARY_TOKENS: '4' }),
-      asker(() => 0.1),
+      asker(keepNew),
     );
     expect(outcome.summary).toBeUndefined();
     expect(outcome.reason).toMatch(/exceeds 4/);
