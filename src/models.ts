@@ -23,9 +23,11 @@ export const DECISION_MODEL_CEILINGS: Readonly<Record<string, number>> = {
   'jev-latest': 30_000,
   'jev-1.13': 30_000,
   'openai/gpt-6-luna-decisions': 524_288,
+  // accepts far more (524 288 measured) but the gateway times out first: 150k
+  // tokens answered in 21s, ~300k returned 504 after 55s
+  'perplexity/pplx-decider-v1.1-27b': 150_000,
   'upstage/solar-decide': 491_520,
   'upstage/solar-decide-flash': 491_520,
-  'perplexity/pplx-decider-v1.1-27b': 524_288,
   'nace-ai/drex-v1.5': 122_880,
   'cloudflare/clef': 458_752,
   'cloudflare/clef-flash': 122_880,
