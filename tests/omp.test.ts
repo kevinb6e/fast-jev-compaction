@@ -106,6 +106,36 @@ describe('compaction instructions', () => {
   });
 });
 
+describe('endpoint from the environment', () => {
+  it('takes JEV_BASE_URL and TYPESAFE_BASE_URL when FAST_JEV_BASE_URL is unset', () => {
+    expect(resolveOmpOptions({ JEV_BASE_URL: 'https://jev.local' }).baseUrl).toBe('https://jev.local');
+    expect(resolveOmpOptions({ TYPESAFE_BASE_URL: 'https://ts.local' }).baseUrl).toBe(
+      'https://ts.local/v1/systemone',
+    );
+    expect(
+      resolveOmpOptions({
+        TYPESAFE_BASE_URL: 'https://ts.local',
+        FAST_JEV_BASE_URL: 'https://fast.local',
+      }).baseUrl,
+    ).toBe('https://fast.local');
+  });
+
+  it('names the endpoint host in the notification', async () => {
+    const seen: string[] = [];
+    await handleBeforeCompact(
+      {
+        type: 'session_before_compact',
+        preparation: preparation({ messagesToSummarize: omp(transcript()) }),
+        branchEntries: [],
+      } as never,
+      { ui: { notify: (message: string) => void seen.push(message) } },
+      resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1', TYPESAFE_BASE_URL: 'https://engine.local' }),
+      asker(keepNew),
+    );
+    expect(seen.join(' ')).toContain('engine.local');
+  });
+});
+
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });

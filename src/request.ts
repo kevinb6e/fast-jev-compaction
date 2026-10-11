@@ -67,13 +67,51 @@ export interface JevEndpoint {
   url: string;
 }
 
+/** The variables an endpoint may come from, in precedence order. */
+export const ENDPOINT_ENV_KEYS = {
+  full: 'JEV_BASE_URL',
+  host: 'TYPESAFE_BASE_URL',
+} as const;
+
+/**
+ * The endpoint the environment asks for: `JEV_BASE_URL` is a whole endpoint URL,
+ * `TYPESAFE_BASE_URL` is the host form TypeSafe's own SDKs take, so the System
+ * One route is appended unless it is already there. `JEV_BASE_URL` wins.
+ */
+export function environmentEndpoint(
+  env: Record<string, string | undefined> = {},
+): string | undefined {
+  const full = env[ENDPOINT_ENV_KEYS.full];
+  if (full) return full;
+  const base = env[ENDPOINT_ENV_KEYS.host]?.replace(/\/+$/, '');
+  if (!base) return undefined;
+  return base.endsWith('/v1/systemone') ? base : `${base}/v1/systemone`;
+}
+
+/**
+ * The host of an endpoint, for diagnostics. A scheme-less value (`localhost:8080`)
+ * parses as a URL with no authority, so it is retried as one; a value `URL`
+ * rejects either way is returned as given.
+ */
+export function endpointHost(url: string): string {
+  for (const candidate of [url, `http://${url}`]) {
+    try {
+      const { host } = new URL(candidate);
+      if (host) return host;
+    } catch {
+      // try the next form
+    }
+  }
+  return url;
+}
+
 /** The provider to call and the URL to reach it on. */
 export function resolveJevEndpoint(
   options: JevEndpointOptions = {},
   env?: Record<string, string | undefined>,
 ): JevEndpoint {
   const provider = resolveJevProvider(options, env);
-  return { provider, url: options.baseUrl ?? PROVIDER_URLS[provider] };
+  return { provider, url: options.baseUrl ?? environmentEndpoint(env) ?? PROVIDER_URLS[provider] };
 }
 
 export interface JevRequest {

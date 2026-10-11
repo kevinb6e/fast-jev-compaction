@@ -21,10 +21,13 @@ import {
   applyRequestBudget,
   compact,
   DEFAULT_MODEL,
+  endpointHost,
+  environmentEndpoint,
   estimateTokens,
   isJevProvider,
   JevClient,
   renderTranscript,
+  resolveJevEndpoint,
 } from '../src/index.js';
 import type {
   CompactOptions,
@@ -104,7 +107,7 @@ export function resolveOmpOptions(
   if (isJevProvider(provider)) options.provider = provider;
   const apiKey = env['FAST_JEV_API_KEY'];
   if (apiKey) options.apiKey = apiKey;
-  const baseUrl = env['FAST_JEV_BASE_URL'];
+  const baseUrl = env['FAST_JEV_BASE_URL'] ?? environmentEndpoint(env);
   if (baseUrl) options.baseUrl = baseUrl;
   const goal = env['FAST_JEV_GOAL'];
   if (goal) options.goal = goal;
@@ -332,7 +335,7 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function statsLine(outcome: SummaryOutcome): string {
+function statsLine(outcome: SummaryOutcome, host?: string): string {
   const parts = [`${percent(outcome.reduction ?? 0)} reduction`];
   if (outcome.result) {
     parts.push(
@@ -342,6 +345,7 @@ function statsLine(outcome: SummaryOutcome): string {
       `${outcome.result.stats.ms}ms`,
     );
   }
+  if (host) parts.push(`via ${host}`);
   return parts.join(', ');
 }
 
@@ -370,7 +374,15 @@ export async function handleBeforeCompact(
       return undefined;
     }
     const preparation = event.preparation;
-    ctx.ui.notify(`${EXTENSION_ID}: ${statsLine(outcome)}`, 'info');
+    ctx.ui.notify(
+      `${EXTENSION_ID}: ${statsLine(
+        outcome,
+        endpointHost(
+          resolveJevEndpoint({ provider: options.provider, baseUrl: options.baseUrl }).url,
+        ),
+      )}`,
+      'info',
+    );
     return {
       compaction: {
         summary: outcome.summary,

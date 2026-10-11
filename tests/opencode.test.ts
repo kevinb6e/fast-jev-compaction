@@ -146,6 +146,41 @@ describe('resolvePluginOptions', () => {
   });
 });
 
+describe('endpoint from the environment', () => {
+  it('takes the endpoint from the environment when no option is set', () => {
+    expect(resolvePluginOptions({}, { JEV_BASE_URL: 'https://jev.local' }).baseUrl).toBe(
+      'https://jev.local',
+    );
+    expect(resolvePluginOptions({}, { TYPESAFE_BASE_URL: 'https://ts.local' }).baseUrl).toBe(
+      'https://ts.local/v1/systemone',
+    );
+    expect(
+      resolvePluginOptions({ baseUrl: 'https://configured.local' }, {
+        TYPESAFE_BASE_URL: 'https://ts.local',
+      }).baseUrl,
+    ).toBe('https://configured.local');
+  });
+
+  it('names the endpoint host in the recorded-summary line', async () => {
+    const logged: string[] = [];
+    const spy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...args: unknown[]) => void logged.push(args.join(' ')));
+    try {
+      const { ctx } = context();
+      await handleCompaction(
+        event(transcript()),
+        ctx,
+        options({ baseUrl: 'https://engine.local/v1/systemone' }),
+        asker((name) => (name === 'call_t2' || name === 'result_t2' ? 0.9 : 0.1)),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(logged.join(' ')).toContain('engine.local');
+  });
+});
+
 describe('fromHostMessages', () => {
   it('keeps text, tool calls and tool results', () => {
     const messages = fromHostMessages(

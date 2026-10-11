@@ -12,6 +12,8 @@ import {
   applyDecisions,
   collectToolCalls,
   decideCall,
+  endpointHost,
+  ENDPOINT_ENV_KEYS,
   PROVIDER_ENV_KEYS,
   type Message,
 } from '../src/index.js';
@@ -72,13 +74,15 @@ describe('getCredentials', () => {
 
   /**
    * `$.env.get` refuses a computed name, so the hook spells each variable out
-   * instead of looping over PROVIDER_ENV_KEYS. This pins the two together: a
-   * provider added to the map without a literal call fails here.
+   * instead of looping over the maps. This pins the two together: a variable
+   * added to a map without a literal call fails here.
    */
-  it('reads exactly the variables the provider map names', async () => {
+  it('reads exactly the variables the maps name', async () => {
     const asked: string[] = [];
     await getCredentials(host(asked) as never, config);
-    expect([...asked].sort()).toEqual([...Object.values(PROVIDER_ENV_KEYS)].sort());
+    expect([...asked].sort()).toEqual(
+      [...Object.values(PROVIDER_ENV_KEYS), ...Object.values(ENDPOINT_ENV_KEYS)].sort(),
+    );
   });
 
   it('picks OpenRouter from a key in either variable, given no other setting', async () => {
@@ -133,6 +137,58 @@ describe('compaction instructions', () => {
     );
     const { state } = JSON.parse(bodies[0]!) as { state: { goal: string } };
     expect(state.goal).toContain('keep the auth work');
+  });
+});
+
+describe('endpoint from the environment', () => {
+  const base = resolveHookConfig({ preserveRecentMessages: 1 });
+  const host = (values: Record<string, string>) => ({
+    env: { get: async (name: string) => values[name] },
+    settings: { read: async () => ({ env: {} }) },
+  });
+
+  it('resolves the endpoint from the engine environment, then the settings block', async () => {
+    const engine = await getCredentials(
+      host({ TYPESAFE_BASE_URL: 'https://engine.local' }) as never,
+      base,
+    );
+    expect(engine.baseUrl).toBe('https://engine.local/v1/systemone');
+
+    const settings = await getCredentials(
+      {
+        env: { get: async () => undefined },
+        settings: { read: async () => ({ env: { JEV_BASE_URL: 'https://jev.local' } }) },
+      } as never,
+      base,
+    );
+    expect(settings.baseUrl).toBe('https://jev.local');
+  });
+
+  it('lets a configured baseUrl win over the environment', async () => {
+    const credentials = await getCredentials(
+      host({ TYPESAFE_BASE_URL: 'https://engine.local' }) as never,
+      { ...base, baseUrl: 'https://configured.local' },
+    );
+    expect(credentials.baseUrl).toBe('https://configured.local');
+  });
+
+  it('sends the request to that endpoint and names it in the summary', async () => {
+    const credentials = await getCredentials(
+      host({ TYPESAFE_BASE_URL: 'https://engine.local' }) as never,
+      base,
+    );
+    const urls: string[] = [];
+    const respond = jevFetch(() => 0.9);
+    const { result } = await compactSession(
+      transcript(),
+      { ...base, ...credentials, apiKey: 'k' },
+      async (url, init) => {
+        urls.push(url);
+        return respond(url, init);
+      },
+    );
+    expect(urls[0]).toBe('https://engine.local/v1/systemone');
+    expect(summarize(result, endpointHost(urls[0]!))).toContain('engine.local');
   });
 });
 

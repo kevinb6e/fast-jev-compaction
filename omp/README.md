@@ -70,7 +70,7 @@ summary is reported with `'info'`.
 | --- | --- | --- |
 | `FAST_JEV_PROVIDER` | inferred | `typesafe` or `openrouter`; inferred from `FAST_JEV_BASE_URL` or the environment otherwise |
 | `FAST_JEV_API_KEY` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` | API key for the provider |
-| `FAST_JEV_BASE_URL` | provider endpoint | System One endpoint override |
+| `FAST_JEV_BASE_URL` | provider endpoint | System One endpoint override; `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read when it is unset |
 | `FAST_JEV_MODEL` | `jev-latest` | Jev model name |
 | `FAST_JEV_GOAL` | last 3 user prompts | Ongoing task description included in the state |
 | `FAST_JEV_KEEP_THRESHOLD` | `0.5` | Minimum keep probability for a call or result to stay |

@@ -79,7 +79,7 @@ log; there is no notification API on the plugin context.
 | --- | --- | --- |
 | `provider` | inferred | `typesafe` or `openrouter`; inferred from `baseUrl` or the environment otherwise |
 | `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` | API key for the provider |
-| `baseUrl` | provider endpoint | System One endpoint override |
+| `baseUrl` | provider endpoint | System One endpoint override; `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read when it is unset |
 | `model` | `jev-latest` | Jev model name |
 | `minReductionRatio` | `0.25` | Minimum shrink of the rendered transcript |
 | `maxSummaryTokens` | `16384` | Estimated token ceiling for the summary |

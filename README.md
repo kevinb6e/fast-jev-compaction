@@ -175,6 +175,15 @@ without that rule TypeSafe would be chosen and the request would 401.
 `baseUrl` always wins for the URL. The model IDs are `jev-latest`, `jev-1.13`
 and, on OpenRouter, `typesafe/jev-1.13`.
 
+The endpoint can also come from the environment, which is what a key issued for
+another host needs: `JEV_BASE_URL` as a complete endpoint URL, or
+`TYPESAFE_BASE_URL` as the host form TypeSafe's own SDKs take, in which case
+`/v1/systemone` is appended unless it is already there. Precedence is the
+explicit option, then `JEV_BASE_URL`, then `TYPESAFE_BASE_URL`, then the
+provider's own URL. **The transcript goes wherever that endpoint points**, so a
+variable exported for another tool sends it there; every host names the endpoint
+host in its outcome line, so the destination is visible.
+
 ## Choosing a decision model
 
 Jev is one decision model among many. OpenRouter serves a whole class of them
