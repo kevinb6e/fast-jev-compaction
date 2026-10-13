@@ -312,6 +312,13 @@ exactly like a working one. Each adapter names itself when it does act:
 | OpenCode | `[fast-jev-compaction]` lines on the console. |
 | omp | `~/.omp/logs/omp.<date>.*.log`: `jev context: <before>-><after> chars, dropped=…`, or `jev context skipped: <reason>` when it decides not to act. |
 
+## Codex
+
+Not supported. The plugin installs (`codex plugin add fast-jev-compaction@fast-jev-compaction` after
+adding this repo as a marketplace) but its hooks cannot run: Codex's hook format rejects the
+function-hook module manifest, and Codex's `PreCompact`/`PostCompact` hooks cannot replace the
+transcript with compacted messages — they can only veto compaction or emit a `systemMessage`.
+
 Before blaming a harness, check the endpoint and key on their own:
 
 ```ts
