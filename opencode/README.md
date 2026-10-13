@@ -36,8 +36,9 @@ Plugin options go in the object form of the same entry:
 ```
 
 Credentials come from `options.apiKey` or, when that is absent, from the
-environment: `TYPESAFE_API_KEY`, or `OPENROUTER_API_KEY` alone to call Jev
-through OpenRouter (see the repository README, "OpenRouter").
+environment: `TYPESAFE_API_KEY`, or `OPENROUTER_API_KEY` / `OPENCODE_API_KEY`
+alone to route Jev through OpenRouter or OpenCode Console (see the repository
+README, "Providers").
 
 ## What it does
 
@@ -81,8 +82,8 @@ log; there is no notification API on the plugin context.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `provider` | inferred | `typesafe` or `openrouter`; inferred from `baseUrl` or the environment otherwise |
-| `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` | API key for the provider |
+| `provider` | inferred | `typesafe`, `openrouter` or `opencode`; inferred from `baseUrl` or the environment otherwise |
+| `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider |
 | `baseUrl` | provider endpoint | System One endpoint override; `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read when it is unset |
 | `model` | `jev-latest` | Jev model name |
 | `minReductionRatio` | `0.25` | Minimum shrink of the rendered transcript |

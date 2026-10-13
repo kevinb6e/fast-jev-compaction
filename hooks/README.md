@@ -64,11 +64,13 @@ recommended development setup. Each variable is read from the process
 environment first, then from the `env` block of the Claude Code settings.
 
 The provider — and with it the endpoint — is resolved by `src/request.ts`: an
-explicit `provider` plugin option, then a `baseUrl` containing `openrouter.ai`,
-then a `sk-or-` key in either variable, then a lone `OPENROUTER_API_KEY`, then
-TypeSafe. So an OpenRouter key works with no further setting, wherever it is
-exported; `provider: "openrouter"` forces the choice, and `baseUrl` overrides
-the URL. `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read from those same two
+explicit `provider` plugin option, then a `baseUrl` containing `openrouter.ai`
+or `opencode.ai`, then a `sk-or-` key in either variable, then a lone
+`OPENROUTER_API_KEY` or `OPENCODE_API_KEY`, then a set `TYPESAFE_API_KEY`, then
+TypeSafe. `OPENCODE_API_KEY` works with no further setting only when it is the
+only key; `provider: "opencode"` forces the choice, and `baseUrl` overrides
+the URL. The OpenCode model defaults to `jev-1.13` (`jev-1.13-free` is the
+free one). `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read from those same two
 environments when no `baseUrl` is set, so the transcript follows an endpoint
 exported for another tool; the toast names the host it went to. See the root
 README, "Providers".

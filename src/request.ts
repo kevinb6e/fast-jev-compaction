@@ -2,21 +2,26 @@ import type { JevAnswer, JevQuestions, JevResponse, JevState } from './types.js'
 
 export const SYSTEM_ONE_URL = 'https://api.typesafe.ai/v1/systemone';
 export const OPENROUTER_SYSTEM_ONE_URL = 'https://openrouter.ai/api/v1/systemone';
+export const OPENCODE_SYSTEM_ONE_URL = 'https://opencode.ai/inference/v1/systemone';
 export const DEFAULT_MODEL = 'jev-latest';
+/** The model OpenCode Console serves when none is named; `jev-1.13` costs $0.042/M input. */
+export const OPENCODE_DEFAULT_MODEL = 'jev-1.13';
 
-/** Where Jev is served: TypeSafe directly, or OpenRouter's System One route. */
-export type JevProvider = 'typesafe' | 'openrouter';
+/** Where Jev is served: TypeSafe directly, OpenRouter's System One route, or OpenCode Console's. */
+export type JevProvider = 'typesafe' | 'openrouter' | 'opencode';
 
 /** The endpoint of each provider; a `baseUrl` override still wins. */
 export const PROVIDER_URLS: Record<JevProvider, string> = {
   typesafe: SYSTEM_ONE_URL,
   openrouter: OPENROUTER_SYSTEM_ONE_URL,
+  opencode: OPENCODE_SYSTEM_ONE_URL,
 };
 
 /** The environment variable holding each provider's key. */
 export const PROVIDER_ENV_KEYS: Record<JevProvider, string> = {
   typesafe: 'TYPESAFE_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
+  opencode: 'OPENCODE_API_KEY',
 };
 
 /** The prefix every OpenRouter key carries, used to spot one in either variable. */
@@ -24,7 +29,7 @@ export const OPENROUTER_KEY_PREFIX = 'sk-or-';
 
 /** Whether a value names a provider; anything else is ignored. */
 export function isJevProvider(value: unknown): value is JevProvider {
-  return value === 'typesafe' || value === 'openrouter';
+  return value === 'typesafe' || value === 'openrouter' || value === 'opencode';
 }
 
 /** The missing-key error of one provider; names the variable to export. */
@@ -41,16 +46,22 @@ export interface JevEndpointOptions {
 
 /**
  * Which provider to call: an explicit `provider`, then a `baseUrl` on
- * `openrouter.ai`, then the environment (a lone `OPENROUTER_API_KEY` means
- * OpenRouter, anything else means TypeSafe), then TypeSafe. The environment is
- * only read when a map is passed, so a caller without one is deterministic.
+ * `openrouter.ai` or `opencode.ai`, then the environment (a lone
+ * `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` means that provider, a
+ * `TYPESAFE_API_KEY` wins over both, anything else means TypeSafe), then
+ * TypeSafe. The environment is only read when a map is passed, so a caller
+ * without one is deterministic.
  */
 export function resolveJevProvider(
   options: JevEndpointOptions = {},
   env: Record<string, string | undefined> = {},
 ): JevProvider {
   if (options.provider) return options.provider;
-  if (options.baseUrl) return /openrouter\.ai/i.test(options.baseUrl) ? 'openrouter' : 'typesafe';
+  if (options.baseUrl) {
+    if (/openrouter\.ai/i.test(options.baseUrl)) return 'openrouter';
+    if (/opencode\.ai/i.test(options.baseUrl)) return 'opencode';
+    return 'typesafe';
+  }
   const typesafe = env[PROVIDER_ENV_KEYS.typesafe];
   const openrouter = env[PROVIDER_ENV_KEYS.openrouter];
   // An OpenRouter key means OpenRouter wherever it is exported: a common setup
@@ -59,6 +70,7 @@ export function resolveJevProvider(
     return 'openrouter';
   }
   if (openrouter && !typesafe) return 'openrouter';
+  if (env[PROVIDER_ENV_KEYS.opencode] && !typesafe && !openrouter) return 'opencode';
   return 'typesafe';
 }
 
@@ -87,7 +99,7 @@ export function environmentEndpoint(
 ): string | undefined {
   const full = env[ENDPOINT_ENV_KEYS.full];
   if (full) return full;
-  if (provider === 'openrouter') return undefined;
+  if (provider && provider !== 'typesafe') return undefined;
   const base = env[ENDPOINT_ENV_KEYS.host]?.replace(/\/+$/, '');
   if (!base) return undefined;
   return base.endsWith('/v1/systemone') ? base : `${base}/v1/systemone`;
@@ -152,7 +164,9 @@ export function buildJevRequest(
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: params.model ?? DEFAULT_MODEL,
+      // OpenCode Console serves System One under plain Jev slugs; `jev-latest`
+      // is a TypeSafe endpoint alias.
+      model: params.model ?? (params.provider === 'opencode' ? OPENCODE_DEFAULT_MODEL : DEFAULT_MODEL),
       state,
       questions,
     }),

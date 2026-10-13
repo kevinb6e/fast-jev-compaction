@@ -156,25 +156,30 @@ fitted throw; the caller (or the harness adapter) decides what to fall back to.
 
 ## Providers
 
-Jev is served by TypeSafe, and also hosted on OpenRouter on the same System One
-API surface, so the two are a drop-in base-URL change:
+Jev is served by TypeSafe, and also hosted on OpenRouter and OpenCode Console
+on the same System One API surface, so the three are a drop-in base-URL change:
 
 ```sh
 export TYPESAFE_API_KEY=...      # TypeSafe directly
 export OPENROUTER_API_KEY=...    # OpenRouter
+export OPENCODE_API_KEY=...      # OpenCode Console (Jev 1.13)
 # or force one when the environment is ambiguous
-export FAST_JEV_PROVIDER=openrouter
+export FAST_JEV_PROVIDER=opencode
 ```
 
 The provider is resolved in this order: an explicit `provider` option, then a
-`baseUrl` containing `openrouter.ai`, then an OpenRouter-shaped key (`sk-or-`)
-in **either** key variable, then a lone `OPENROUTER_API_KEY`, then TypeSafe.
+`baseUrl` containing `openrouter.ai` or `opencode.ai`, then an OpenRouter-shaped
+key (`sk-or-`) in **either** key variable, then a lone `OPENROUTER_API_KEY` or
+`OPENCODE_API_KEY`, then a set `TYPESAFE_API_KEY`, then TypeSafe.
 Detection reads the key's own shape because a key keeps it wherever it is
 exported — a common setup exports an OpenRouter key as `TYPESAFE_API_KEY`, and
 without that rule TypeSafe would be chosen and the request would 401.
+An OpenCode Console key must be its only key in the environment; a set
+`TYPESAFE_API_KEY` wins over it.
 
 `baseUrl` always wins for the URL. The model IDs are `jev-latest`, `jev-1.13`
-and, on OpenRouter, `typesafe/jev-1.13`.
+and, on OpenRouter, `typesafe/jev-1.13`; on OpenCode Console the default is
+`jev-1.13` (use `jev-1.13-free` for the free model).
 
 The endpoint can also come from the environment, which is what a key issued for
 another host needs: `JEV_BASE_URL` as a complete endpoint URL, or
@@ -277,10 +282,10 @@ a source file.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `provider` | inferred | `typesafe` or `openrouter`; inferred from `baseUrl` or the key |
-| `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
+| `provider` | inferred | `typesafe`, `openrouter` or `opencode`; inferred from `baseUrl` or the key |
+| `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
 | `model` | `jev-latest` | Decision model name; see [Choosing a decision model](#choosing-a-decision-model) |
-| `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone` or `https://openrouter.ai/api/v1/systemone`) |
+| `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone`, `https://openrouter.ai/api/v1/systemone` or `https://opencode.ai/inference/v1/systemone`) |
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
 | `instructions` | — | What the user asked this compaction to keep or drop (`/compact keep the auth work`), appended after the goal; truncated the way an inferred goal is |

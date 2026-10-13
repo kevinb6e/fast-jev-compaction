@@ -283,8 +283,8 @@ export function decisionLogLines(
 /**
  * Resolves the provider and its key from the plugin's `userConfig`, then the
  * engine's environment, then the settings `env` block. The provider is picked
- * from whatever keys are actually set, so exporting only `OPENROUTER_API_KEY`
- * calls Jev through OpenRouter.
+ * from whatever keys are actually set: a lone `OPENROUTER_API_KEY` calls Jev
+ * through OpenRouter, a lone `OPENCODE_API_KEY` through OpenCode Console.
  */
 export async function getCredentials(
   $: {
@@ -315,6 +315,7 @@ export async function getCredentials(
       await $.env.get('OPENROUTER_API_KEY'),
       'OPENROUTER_API_KEY',
     ),
+    [PROVIDER_ENV_KEYS.opencode]: prefer(await $.env.get('OPENCODE_API_KEY'), 'OPENCODE_API_KEY'),
     JEV_BASE_URL: prefer(await $.env.get('JEV_BASE_URL'), 'JEV_BASE_URL'),
     TYPESAFE_BASE_URL: prefer(await $.env.get('TYPESAFE_BASE_URL'), 'TYPESAFE_BASE_URL'),
   };

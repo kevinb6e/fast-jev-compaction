@@ -41,6 +41,15 @@ describe('resolveJevProvider', () => {
     expect(resolveJevProvider({}, { TYPESAFE_API_KEY: key, OPENROUTER_API_KEY: key })).toBe('openrouter');
     expect(resolveJevProvider({}, { OPENROUTER_API_KEY: key, TYPESAFE_API_KEY: 't' })).toBe('openrouter');
   });
+
+  it('infers OpenCode only from a lone OPENCODE_API_KEY or an opencode baseUrl', () => {
+    expect(resolveJevProvider({}, { OPENCODE_API_KEY: 'oc' })).toBe('opencode');
+    expect(resolveJevProvider({ baseUrl: 'https://opencode.ai/inference/v1/systemone' })).toBe('opencode');
+    // an explicit provider or any other key keeps TypeSafe / OpenRouter
+    expect(resolveJevProvider({}, { OPENCODE_API_KEY: 'oc', TYPESAFE_API_KEY: 't' })).toBe('typesafe');
+    expect(resolveJevProvider({}, { OPENCODE_API_KEY: 'oc', OPENROUTER_API_KEY: 'o' })).toBe('openrouter');
+    expect(resolveJevProvider({ provider: 'openrouter' }, { OPENCODE_API_KEY: 'oc' })).toBe('openrouter');
+  });
 });
 
 describe('resolveJevEndpoint', () => {
@@ -50,6 +59,11 @@ describe('resolveJevEndpoint', () => {
       provider: 'openrouter',
       url: OPENROUTER_SYSTEM_ONE_URL,
     });
+    expect(resolveJevEndpoint({ provider: 'opencode' })).toEqual({
+      provider: 'opencode',
+      url: PROVIDER_URLS.opencode,
+    });
+    expect(resolveJevEndpoint({}, { OPENCODE_API_KEY: 'oc' }).url).toBe(PROVIDER_URLS.opencode);
     expect(resolveJevEndpoint({}, { OPENROUTER_API_KEY: 'o' }).url).toBe(OPENROUTER_SYSTEM_ONE_URL);
   });
 
@@ -102,6 +116,9 @@ describe('endpoint from the environment', () => {
       resolveJevEndpoint({}, { OPENROUTER_API_KEY: 'sk-or-v1-abc', TYPESAFE_BASE_URL: 'https://engine.local' })
         .url,
     ).toBe(OPENROUTER_SYSTEM_ONE_URL);
+    expect(
+      resolveJevEndpoint({ provider: 'opencode' }, { TYPESAFE_BASE_URL: 'https://engine.local' }).url,
+    ).toBe('https://opencode.ai/inference/v1/systemone');
   });
 });
 
@@ -116,15 +133,25 @@ describe('provider helpers', () => {
   it('recognises the known providers only', () => {
     expect(isJevProvider('typesafe')).toBe(true);
     expect(isJevProvider('openrouter')).toBe(true);
+    expect(isJevProvider('opencode')).toBe(true);
     expect(isJevProvider('open-ai')).toBe(false);
     expect(isJevProvider(undefined)).toBe(false);
   });
 
   it('names the environment variable of each provider', () => {
-    expect(PROVIDER_ENV_KEYS).toEqual({ typesafe: 'TYPESAFE_API_KEY', openrouter: 'OPENROUTER_API_KEY' });
-    expect(PROVIDER_URLS).toEqual({ typesafe: SYSTEM_ONE_URL, openrouter: OPENROUTER_SYSTEM_ONE_URL });
+    expect(PROVIDER_ENV_KEYS).toEqual({
+      typesafe: 'TYPESAFE_API_KEY',
+      openrouter: 'OPENROUTER_API_KEY',
+      opencode: 'OPENCODE_API_KEY',
+    });
+    expect(PROVIDER_URLS).toEqual({
+      typesafe: SYSTEM_ONE_URL,
+      openrouter: OPENROUTER_SYSTEM_ONE_URL,
+      opencode: 'https://opencode.ai/inference/v1/systemone',
+    });
     expect(missingApiKeyError('typesafe').message).toMatch(/TYPESAFE_API_KEY/);
     expect(missingApiKeyError('openrouter').message).toMatch(/OPENROUTER_API_KEY/);
+    expect(missingApiKeyError('opencode').message).toMatch(/OPENCODE_API_KEY/);
   });
 });
 
@@ -140,6 +167,12 @@ describe('buildJevRequest', () => {
     const request = buildJevRequest({ apiKey: 'k', provider: 'openrouter', model: 'jev-1.13' }, state, questions);
     expect(request.headers.authorization).toBe('Bearer k');
     expect(JSON.parse(request.body)).toEqual({ model: 'jev-1.13', state, questions });
+  });
+
+  it('defaults the OpenCode model to jev-1.13 and others to jev-latest', () => {
+    expect(JSON.parse(buildJevRequest({ apiKey: 'k', provider: 'opencode' }, state, questions).body).model)
+      .toBe('jev-1.13');
+    expect(JSON.parse(buildJevRequest({ apiKey: 'k' }, state, questions).body).model).toBe('jev-latest');
   });
 
   it('lets a baseUrl win over the provider URL', () => {
