@@ -17,19 +17,42 @@ export const PROVIDER_OVERRIDE_ENV_KEY = 'FAST_JEV_PROVIDER';
 /** Where Jev is served: TypeSafe directly, OpenRouter's System One route, or OpenCode Console's. */
 export type JevProvider = 'typesafe' | 'openrouter' | 'opencode';
 
-/** The endpoint of each provider; a `baseUrl` override still wins. */
-export const PROVIDER_URLS: Record<JevProvider, string> = {
-  typesafe: SYSTEM_ONE_URL,
-  openrouter: OPENROUTER_SYSTEM_ONE_URL,
-  opencode: OPENCODE_SYSTEM_ONE_URL,
+/** Everything that differs per provider: its endpoint, its key variable, and its default model. */
+export interface ProviderFacts {
+  /** The endpoint; a `baseUrl` override still wins. */
+  url: string;
+  /** The environment variable holding the provider's key. */
+  envKey: string;
+  /** The model to name when the caller asks for none. */
+  model: string;
+}
+
+/**
+ * The single per-provider record: one entry holds the endpoint, the key
+ * variable, and the default model together, so the three facts cannot drift
+ * apart. `PROVIDER_URLS` and `PROVIDER_ENV_KEYS` are views over it, kept
+ * exported for callers that import them directly.
+ */
+export const PROVIDERS: Record<JevProvider, ProviderFacts> = {
+  typesafe: { url: SYSTEM_ONE_URL, envKey: 'TYPESAFE_API_KEY', model: DEFAULT_MODEL },
+  openrouter: { url: OPENROUTER_SYSTEM_ONE_URL, envKey: 'OPENROUTER_API_KEY', model: DEFAULT_MODEL },
+  opencode: { url: OPENCODE_SYSTEM_ONE_URL, envKey: 'OPENCODE_API_KEY', model: OPENCODE_DEFAULT_MODEL },
 };
 
-/** The environment variable holding each provider's key. */
-export const PROVIDER_ENV_KEYS: Record<JevProvider, string> = {
-  typesafe: 'TYPESAFE_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY',
-  opencode: 'OPENCODE_API_KEY',
-};
+/** Projects one fact of `PROVIDERS` across every provider. */
+function providerView<K extends keyof ProviderFacts>(key: K): Record<JevProvider, ProviderFacts[K]> {
+  const view = {} as Record<JevProvider, ProviderFacts[K]>;
+  for (const name of Object.keys(PROVIDERS) as JevProvider[]) {
+    view[name] = PROVIDERS[name][key];
+  }
+  return view;
+}
+
+/** The endpoint of each provider; a view over `PROVIDERS`. */
+export const PROVIDER_URLS = providerView('url');
+
+/** The environment variable holding each provider's key; a view over `PROVIDERS`. */
+export const PROVIDER_ENV_KEYS = providerView('envKey');
 
 /** The prefix every OpenRouter key carries, used to spot one in either variable. */
 export const OPENROUTER_KEY_PREFIX = 'sk-or-';
@@ -40,17 +63,17 @@ export function isJevProvider(value: unknown): value is JevProvider {
 }
 
 /**
- * The model to name when the caller asks for none. OpenCode Console serves
- * System One under plain Jev slugs, and its `jev-latest` is a TypeSafe
- * endpoint alias.
+ * The model to name when the caller asks for none: the provider's own entry in
+ * `PROVIDERS`. OpenCode Console serves System One under plain Jev slugs, and
+ * its `jev-latest` is a TypeSafe endpoint alias.
  */
 export function defaultModelFor(provider: JevProvider): string {
-  return provider === 'opencode' ? OPENCODE_DEFAULT_MODEL : DEFAULT_MODEL;
+  return PROVIDERS[provider].model;
 }
 
 /** The missing-key error of one provider; names the variable to export. */
 export function missingApiKeyError(provider: JevProvider): Error {
-  return new Error(`${PROVIDER_ENV_KEYS[provider]} is not configured`);
+  return new Error(`${PROVIDERS[provider].envKey} is not configured`);
 }
 
 export interface JevEndpointOptions {
@@ -61,32 +84,36 @@ export interface JevEndpointOptions {
 }
 
 /**
- * Which provider to call: an explicit `provider`, then a `baseUrl` on
- * `openrouter.ai` or `opencode.ai`, then the environment (a lone
- * `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` means that provider, a
- * `TYPESAFE_API_KEY` wins over both, anything else means TypeSafe), then
- * TypeSafe. The environment is only read when a map is passed, so a caller
- * without one is deterministic.
+ * Which provider to call: an explicit `provider`, then `FAST_JEV_PROVIDER`
+ * when it names one, then a `baseUrl` on `openrouter.ai` or `opencode.ai`,
+ * then the environment (a lone `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`
+ * means that provider, a `TYPESAFE_API_KEY` wins over both, anything else
+ * means TypeSafe), then TypeSafe. The environment is only read when a map is
+ * passed, so a caller without one is deterministic.
  */
 export function resolveJevProvider(
   options: JevEndpointOptions = {},
   env: Record<string, string | undefined> = {},
 ): JevProvider {
   if (options.provider) return options.provider;
+  // The one knob that names a provider outright; it beats every inference below
+  // and is the only provider setting the library path needs.
+  const override = env[PROVIDER_OVERRIDE_ENV_KEY];
+  if (isJevProvider(override)) return override;
   if (options.baseUrl) {
     if (/openrouter\.ai/i.test(options.baseUrl)) return 'openrouter';
     if (/opencode\.ai/i.test(options.baseUrl)) return 'opencode';
     return 'typesafe';
   }
-  const typesafe = env[PROVIDER_ENV_KEYS.typesafe];
-  const openrouter = env[PROVIDER_ENV_KEYS.openrouter];
+  const typesafe = env[PROVIDERS.typesafe.envKey];
+  const openrouter = env[PROVIDERS.openrouter.envKey];
   // An OpenRouter key means OpenRouter wherever it is exported: a common setup
   // puts it in `TYPESAFE_API_KEY`, which would otherwise win and 401.
   if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX) || openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) {
     return 'openrouter';
   }
   if (openrouter && !typesafe) return 'openrouter';
-  if (env[PROVIDER_ENV_KEYS.opencode] && !typesafe && !openrouter) return 'opencode';
+  if (env[PROVIDERS.opencode.envKey] && !typesafe && !openrouter) return 'opencode';
   return 'typesafe';
 }
 
@@ -146,7 +173,7 @@ export function resolveJevEndpoint(
   const provider = resolveJevProvider(options, env);
   return {
     provider,
-    url: options.baseUrl ?? environmentEndpoint(env, provider) ?? PROVIDER_URLS[provider],
+    url: options.baseUrl ?? environmentEndpoint(env, provider) ?? PROVIDERS[provider].url,
   };
 }
 
@@ -173,7 +200,7 @@ export function buildJevRequest(
   questions: JevQuestions,
 ): JevRequest {
   return {
-    url: params.baseUrl ?? PROVIDER_URLS[params.provider ?? 'typesafe'],
+    url: params.baseUrl ?? PROVIDERS[params.provider ?? 'typesafe'].url,
     method: 'POST',
     headers: {
       authorization: `Bearer ${params.apiKey}`,

@@ -19,8 +19,8 @@ import {
   isJevProvider,
   missingApiKeyError,
   parseJevResponse,
-  PROVIDER_ENV_KEYS,
   PROVIDER_OVERRIDE_ENV_KEY,
+  PROVIDERS,
   resolveJevEndpoint,
   resolveJevProvider,
   type JevEndpointOptions,
@@ -435,15 +435,15 @@ export async function getCredentials(
 
   // `$.env.get` requires a literal name - the engine lists the variables a
   // module reads by reading its source, so it refuses a computed one. Each
-  // variable is therefore spelled out here; PROVIDER_ENV_KEYS stays the map of
-  // which provider uses which, and the provider test pins the two together.
+  // variable is therefore spelled out here; `PROVIDERS` names which provider
+  // uses which, and the provider test pins the two together.
   const env: Record<string, string | undefined> = {
-    [PROVIDER_ENV_KEYS.typesafe]: prefer(await $.env.get('TYPESAFE_API_KEY'), 'TYPESAFE_API_KEY'),
-    [PROVIDER_ENV_KEYS.openrouter]: prefer(
+    [PROVIDERS.typesafe.envKey]: prefer(await $.env.get('TYPESAFE_API_KEY'), 'TYPESAFE_API_KEY'),
+    [PROVIDERS.openrouter.envKey]: prefer(
       await $.env.get('OPENROUTER_API_KEY'),
       'OPENROUTER_API_KEY',
     ),
-    [PROVIDER_ENV_KEYS.opencode]: prefer(await $.env.get('OPENCODE_API_KEY'), 'OPENCODE_API_KEY'),
+    [PROVIDERS.opencode.envKey]: prefer(await $.env.get('OPENCODE_API_KEY'), 'OPENCODE_API_KEY'),
     [PROVIDER_OVERRIDE_ENV_KEY]: prefer(
       await $.env.get('FAST_JEV_PROVIDER'),
       PROVIDER_OVERRIDE_ENV_KEY,
@@ -460,7 +460,7 @@ export async function getCredentials(
     },
     config.apiKey === undefined ? env : undefined,
   );
-  const apiKey = config.apiKey ?? env[PROVIDER_ENV_KEYS[provider]];
+  const apiKey = config.apiKey ?? env[PROVIDERS[provider].envKey];
   // A configured endpoint wins; otherwise the environment decides where the
   // transcript goes, which is why the outcome line names the host.
   const baseUrl = config.baseUrl ?? environmentEndpoint(env, provider);

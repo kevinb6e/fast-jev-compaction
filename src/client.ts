@@ -2,7 +2,7 @@ import {
   buildJevRequest,
   missingApiKeyError,
   parseJevResponse,
-  PROVIDER_ENV_KEYS,
+  PROVIDERS,
   resolveJevProvider,
   type JevProvider,
 } from './request.js';
@@ -40,7 +40,7 @@ export class JevClient implements JevAsker {
       { provider: options.provider, baseUrl: options.baseUrl },
       options.apiKey === undefined ? env : undefined,
     );
-    this.apiKey = options.apiKey ?? env[PROVIDER_ENV_KEYS[this.provider]] ?? '';
+    this.apiKey = options.apiKey ?? env[PROVIDERS[this.provider].envKey] ?? '';
     this.model = options.model;
     this.baseUrl = options.baseUrl;
     this.fetcher = options.fetch ?? fetch;

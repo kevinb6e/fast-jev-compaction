@@ -27,9 +27,12 @@ The extension is also declared in the package manifest
 (`"omp": { "extensions": ["./omp/index.ts"] }`), so a checkout installed as a
 package is discovered the same way.
 
-Credentials come from the environment: `TYPESAFE_API_KEY`, or
-`OPENROUTER_API_KEY` / `OPENCODE_API_KEY` alone to route Jev through OpenRouter
-or OpenCode Console (see the repository README, "Providers").
+Credentials come from the environment: `FAST_JEV_API_KEY`, then
+`TYPESAFE_API_KEY`, `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`. Expose the key
+of the provider you use — the endpoint and the default model follow from it —
+and set `FAST_JEV_PROVIDER` when the environment is ambiguous. The per-provider
+variables and the full priority order are in the repository README,
+[Providers](../README.md#providers).
 
 ## What it does
 
@@ -72,10 +75,10 @@ summary is reported with `'info'`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `FAST_JEV_PROVIDER` | inferred | `typesafe`, `openrouter` or `opencode`; inferred from `FAST_JEV_BASE_URL` or the environment otherwise |
+| `FAST_JEV_PROVIDER` | inferred | `typesafe`, `openrouter` or `opencode`; names the provider over the key inference (the endpoint is still `FAST_JEV_BASE_URL` when set), an unknown name is ignored |
 | `FAST_JEV_API_KEY` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider |
 | `FAST_JEV_BASE_URL` | provider endpoint | System One endpoint override; `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read when it is unset |
-| `FAST_JEV_MODEL` | `jev-latest` | Jev model name |
+| `FAST_JEV_MODEL` | resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise) | Jev model name |
 | `FAST_JEV_GOAL` | last 3 user prompts | Ongoing task description included in the state |
 | `FAST_JEV_KEEP_THRESHOLD` | `0.5` | Minimum keep probability for a call or result to stay |
 | `FAST_JEV_PRESERVE_RECENT` | `6` | Newest messages never touched (the first is always kept) |

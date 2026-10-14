@@ -62,10 +62,11 @@ The plugin declares these `userConfig` values in
 
 The key can be supplied as the sensitive `apiKey` plugin option or through
 `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY`, and
-`FAST_JEV_PROVIDER` names the provider when the keys alone are ambiguous. The
-environment variable is the recommended development setup. Each variable is
-read from the process environment first, then from the `env` block of the
-Claude Code settings.
+`FAST_JEV_PROVIDER` names the provider (`typesafe`, `openrouter` or `opencode`)
+when the keys alone are ambiguous; it beats `baseUrl` and the key inference, and
+an unknown name is ignored. The environment variable is the recommended
+development setup. Each variable is read from the process environment first,
+then from the `env` block of the Claude Code settings.
 
 The provider — and with it the endpoint — is resolved by `src/request.ts`: an
 explicit `provider` plugin option, then `FAST_JEV_PROVIDER`, then a `baseUrl`

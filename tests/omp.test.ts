@@ -156,6 +156,17 @@ describe('resolveOmpOptions', () => {
     });
   });
 
+  it('derives the model from the resolved provider when none is set', () => {
+    expect(resolveOmpOptions({}).model).toBe('jev-latest');
+    expect(resolveOmpOptions({ FAST_JEV_PROVIDER: 'opencode' }).model).toBe('jev-1.13');
+    expect(resolveOmpOptions({ OPENCODE_API_KEY: 'oc' }).model).toBe('jev-1.13');
+    expect(resolveOmpOptions({ FAST_JEV_PROVIDER: 'openrouter' }).model).toBe('jev-latest');
+    // An explicit model still wins over the provider default.
+    expect(
+      resolveOmpOptions({ FAST_JEV_PROVIDER: 'opencode', FAST_JEV_MODEL: 'typesafe/jev-1.13' }).model,
+    ).toBe('typesafe/jev-1.13');
+  });
+
   it('reads the FAST_JEV_* variables and ignores malformed ones', () => {
     expect(
       resolveOmpOptions({
@@ -397,7 +408,7 @@ describe('handleBeforeCompact', () => {
     const result = await handleBeforeCompact(
       event(),
       { ui },
-      { ...resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1' }), apiKey: '' },
+      { ...resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1' }), provider: 'typesafe', apiKey: '' },
     );
     expect(result).toBeUndefined();
     expect(ui.notify).toHaveBeenCalledWith(expect.stringMatching(/falling back.*TYPESAFE_API_KEY/), 'warning');

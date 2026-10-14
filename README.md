@@ -168,34 +168,63 @@ export OPENCODE_API_KEY=...      # OpenCode Console (Jev 1.13)
 export FAST_JEV_PROVIDER=opencode
 ```
 
-The provider is resolved in this order: an explicit `provider` option, then a
-`FAST_JEV_PROVIDER` naming one, then a `baseUrl` containing `openrouter.ai` or
-`opencode.ai`, then an OpenRouter-shaped key (`sk-or-`) in **either** key
-variable, then a lone `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`, then a set
-`TYPESAFE_API_KEY`, then TypeSafe. The hook reads `FAST_JEV_PROVIDER` from the
-engine environment first, then from the `env` block of the Claude Code
-settings; the omp and OpenCode adapters read the process environment.
-Detection reads the key's own shape because a key keeps it wherever it is
-exported — a common setup exports an OpenRouter key as `TYPESAFE_API_KEY`, and
-without that rule TypeSafe would be chosen and the request would 401.
-An OpenCode Console key must be its only key in the environment; a set
-`TYPESAFE_API_KEY` wins over it.
+### Environment variables per provider
 
-`baseUrl` always wins for the URL. The model IDs are `jev-latest`, `jev-1.13`
-and, on OpenRouter, `typesafe/jev-1.13`. When no `model` is set, the model
-follows the resolved provider: `jev-1.13` on OpenCode Console and `jev-latest`
-everywhere else (use `jev-1.13-free` for the free OpenCode model).
+Expose the key of the provider you use; the endpoint and the default model
+follow from it. `JEV_BASE_URL` is the one endpoint override that applies to
+every provider.
 
-The endpoint can also come from the environment, which is what a key issued for
-another host needs: `JEV_BASE_URL` as a complete endpoint URL, or
-`TYPESAFE_BASE_URL` as the host form TypeSafe's own SDKs take, in which case
+| Provider | Expose (key) | Endpoint override | Default model | Default endpoint |
+| --- | --- | --- | --- | --- |
+| TypeSafe | `TYPESAFE_API_KEY` | `TYPESAFE_BASE_URL` (host form) or `JEV_BASE_URL` | `jev-latest` | `https://api.typesafe.ai/v1/systemone` |
+| OpenRouter | `OPENROUTER_API_KEY` | `JEV_BASE_URL` (`TYPESAFE_BASE_URL` is ignored) | `jev-latest` | `https://openrouter.ai/api/v1/systemone` |
+| OpenCode Console | `OPENCODE_API_KEY` | `JEV_BASE_URL` (`TYPESAFE_BASE_URL` is ignored) | `jev-1.13` | `https://opencode.ai/inference/v1/systemone` |
+
+`TYPESAFE_BASE_URL` is the host form TypeSafe's own SDKs take, so
 `/v1/systemone` is appended unless it is already there; it is ignored when the
-resolved provider is OpenRouter, whose key must meet the OpenRouter route.
-Precedence is the
-explicit option, then `JEV_BASE_URL`, then `TYPESAFE_BASE_URL`, then the
-provider's own URL. **The transcript goes wherever that endpoint points**, so a
-variable exported for another tool sends it there; every host names the endpoint
-host in its outcome line, so the destination is visible.
+resolved provider is OpenRouter or OpenCode, whose keys must meet their own
+route. `FAST_JEV_PROVIDER` is the provider override, and `FAST_JEV_MODEL`
+overrides the default model (see [Choosing a decision model](#choosing-a-decision-model)).
+
+### Which one wins (priority)
+
+**Provider** — the first rule that matches decides, in this order:
+
+1. an explicit `provider` option;
+2. `FAST_JEV_PROVIDER`, when it names `typesafe`, `openrouter` or `opencode`
+   (the hook reads it from the engine environment, then its settings `env`
+   block; the omp and OpenCode adapters and the library read it from the
+   process environment);
+3. a `baseUrl` containing `openrouter.ai` or `opencode.ai`;
+4. an OpenRouter-shaped key (`sk-or-`) in **either** key variable;
+5. a lone `OPENROUTER_API_KEY`;
+6. a lone `OPENCODE_API_KEY`;
+7. a set `TYPESAFE_API_KEY`;
+8. otherwise TypeSafe.
+
+So `TYPESAFE_API_KEY` outranks a set `OPENROUTER_API_KEY` (rule 7 beats rule 5)
+unless that key is `sk-or-`-shaped, and it outranks `OPENCODE_API_KEY` outright
+(an OpenCode Console key must be the only key in the environment). Rule 4 reads
+the key's own shape because a key keeps it wherever it is exported — a common
+setup exports an OpenRouter key as `TYPESAFE_API_KEY`, and without that rule
+TypeSafe would be chosen and the request would 401.
+
+**API key** — an explicit `apiKey` option, then `FAST_JEV_API_KEY` (omp and
+OpenCode), then the resolved provider's own variable.
+
+**Endpoint** — an explicit `baseUrl` option, then `FAST_JEV_BASE_URL` (omp and
+OpenCode), then `JEV_BASE_URL`, then `TYPESAFE_BASE_URL`, then the provider's own
+URL.
+
+**Model** — an explicit `model` option (or `FAST_JEV_MODEL` in omp and
+OpenCode), then the resolved provider's default.
+
+The model IDs are `jev-latest`, `jev-1.13` and, on OpenRouter,
+`typesafe/jev-1.13` (use `jev-1.13-free` for the free OpenCode model).
+
+**The transcript goes wherever the resolved endpoint points**, so a variable
+exported for another tool sends it there; every host names the endpoint host in
+its outcome line, so the destination is visible.
 
 ## Choosing a decision model
 
@@ -248,6 +277,15 @@ npm install fast-jev-compaction
 export TYPESAFE_API_KEY=...
 ```
 
+To call Jev through another host, expose that host's key and name the provider
+with `FAST_JEV_PROVIDER` (`typesafe`, `openrouter` or `opencode`) — the endpoint
+and the default model then follow from it:
+
+```sh
+export OPENROUTER_API_KEY=...      # or OPENCODE_API_KEY / TYPESAFE_API_KEY
+export FAST_JEV_PROVIDER=openrouter
+```
+
 ```ts
 import { compactMessages, reductionRatio, type Message } from 'fast-jev-compaction';
 
@@ -280,14 +318,17 @@ The building blocks (`collectToolCalls`, `fitState`, `batchCalls`,
 `decideCall`, `applyDecisions`) are exported too.
 
 `apiKey` defaults to the variable of the resolved provider
-(`TYPESAFE_API_KEY` or `OPENROUTER_API_KEY`). Never commit the key or put it in
-a source file.
+(`TYPESAFE_API_KEY`, `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`), and
+`FAST_JEV_PROVIDER` names the provider outright — it beats `baseUrl` and the
+key-shape inference, and an unknown name is ignored. A supplied `apiKey` still
+pins the endpoint, so pass `provider` alongside it rather than relying on the
+environment. Never commit the key or put it in a source file.
 
 ## Options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `provider` | inferred | `typesafe`, `openrouter` or `opencode`; inferred from `baseUrl` or the key |
+| `provider` | inferred | `typesafe`, `openrouter` or `opencode`; set it with the `provider` option or `FAST_JEV_PROVIDER`, otherwise inferred from `baseUrl` or the key |
 | `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
 | `model` | resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise) | Decision model name; see [Choosing a decision model](#choosing-a-decision-model) |
 | `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone`, `https://openrouter.ai/api/v1/systemone` or `https://opencode.ai/inference/v1/systemone`) |

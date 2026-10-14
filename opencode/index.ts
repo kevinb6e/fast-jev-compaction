@@ -16,6 +16,7 @@ import {
   applyRequestBudget,
   compact,
   DEFAULT_MODEL,
+  defaultModelFor,
   endpointHost,
   environmentEndpoint,
   estimateTokens,
@@ -112,8 +113,10 @@ export function resolvePluginOptions(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): OpenCodeOptions {
   const resolved: OpenCodeOptions = {
-    model:
-      string(options['model']) ?? env['FAST_JEV_MODEL'] ?? OPENCODE_DEFAULTS.model,
+    // Filled in below once the provider is known: an unset model follows the
+    // resolved provider, so `provider: 'opencode'` cannot ship a slug that host
+    // rejects. `OPENCODE_DEFAULTS.model` stays exported for callers that read it.
+    model: string(options['model']) ?? env['FAST_JEV_MODEL'] ?? '',
     minReductionRatio: optionNumber(
       options,
       'minReductionRatio',
@@ -152,6 +155,7 @@ export function resolvePluginOptions(
       continue;
     }
   }
+  if (!resolved.model) resolved.model = defaultModelFor(resolveJevProvider(resolved, env));
   // A model swap has to carry its own context budget; the decision models range
   // from 7 168 to 524 288 usable request tokens.
   return applyRequestBudget(resolved);

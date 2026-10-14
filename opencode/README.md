@@ -35,10 +35,12 @@ Plugin options go in the object form of the same entry:
 }
 ```
 
-Credentials come from `options.apiKey` or, when that is absent, from the
-environment: `TYPESAFE_API_KEY`, or `OPENROUTER_API_KEY` / `OPENCODE_API_KEY`
-alone to route Jev through OpenRouter or OpenCode Console (see the repository
-README, "Providers").
+Credentials come from `options.apiKey`, then `FAST_JEV_API_KEY`, then the
+environment: `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`.
+Expose the key of the provider you use — the endpoint and the default model
+follow from it — and set `provider`/`FAST_JEV_PROVIDER` when the environment is
+ambiguous. The per-provider variables and the full priority order are in the
+repository README, [Providers](../README.md#providers).
 
 ## What it does
 
@@ -82,10 +84,10 @@ log; there is no notification API on the plugin context.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `provider` | inferred | `typesafe`, `openrouter` or `opencode`; inferred from `baseUrl` or the environment otherwise |
+| `provider` | inferred | `typesafe`, `openrouter` or `opencode`; the `provider` option or `FAST_JEV_PROVIDER` wins, otherwise inferred from `baseUrl` or the key |
 | `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider |
 | `baseUrl` | provider endpoint | System One endpoint override; `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read when it is unset |
-| `model` | `jev-latest` | Jev model name |
+| `model` | resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise) | Jev model name; `FAST_JEV_MODEL` is read when the option is unset |
 | `minReductionRatio` | `0.25` | Minimum shrink of the rendered transcript |
 | `requireKeepSignal` | `false` | Fall back when Jev drops every call it judged, rather than apply the largest possible reduction |
 | `maxSummaryTokens` | `16384` | Estimated token ceiling for the summary |

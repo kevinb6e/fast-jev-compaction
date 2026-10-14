@@ -631,10 +631,12 @@ describe('HTTP client', () => {
     expect(response.answers.q).toEqual({ noul: 0.4 });
     expect(JSON.parse(bodies[0]!).model).toBe('jev-test');
 
-    const keyless = new JevClient({ apiKey: '' });
+    // Pin the provider so the assertion does not depend on the ambient
+    // FAST_JEV_* environment (a FAST_JEV_PROVIDER=opencode would change the name).
+    const keyless = new JevClient({ apiKey: '', provider: 'typesafe' });
     await expect(keyless.ask('s', {})).rejects.toThrow(/TYPESAFE_API_KEY/);
     await expect(
-      compactMessages(transcript(), { apiKey: '', preserveRecentMessages: 1 }),
+      compactMessages(transcript(), { apiKey: '', provider: 'typesafe', preserveRecentMessages: 1 }),
     ).rejects.toThrow(/TYPESAFE_API_KEY/);
   });
 });

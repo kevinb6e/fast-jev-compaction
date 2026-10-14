@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { JevClient } from '../src/client.js';
 import {
   buildJevRequest,
+  defaultModelFor,
   endpointHost,
   isJevProvider,
   missingApiKeyError,
   OPENROUTER_SYSTEM_ONE_URL,
   PROVIDER_ENV_KEYS,
   PROVIDER_URLS,
+  PROVIDERS,
   resolveJevEndpoint,
   resolveJevProvider,
   SYSTEM_ONE_URL,
@@ -21,6 +23,27 @@ describe('resolveJevProvider', () => {
     expect(resolveJevProvider()).toBe('typesafe');
     expect(resolveJevProvider({}, {})).toBe('typesafe');
     expect(resolveJevProvider({}, { TYPESAFE_API_KEY: 't' })).toBe('typesafe');
+  });
+
+  it('honours FAST_JEV_PROVIDER over every inference below it', () => {
+    // A valid name wins over the keys and the baseUrl.
+    expect(resolveJevProvider({}, { FAST_JEV_PROVIDER: 'opencode', TYPESAFE_API_KEY: 't' })).toBe(
+      'opencode',
+    );
+    expect(resolveJevProvider({}, { FAST_JEV_PROVIDER: 'typesafe', OPENROUTER_API_KEY: 'sk-or-v1-abc' })).toBe(
+      'typesafe',
+    );
+    expect(resolveJevProvider({}, { FAST_JEV_PROVIDER: 'openrouter', OPENCODE_API_KEY: 'oc' })).toBe(
+      'openrouter',
+    );
+    // An explicit provider option still wins over the variable.
+    expect(resolveJevProvider({ provider: 'typesafe' }, { FAST_JEV_PROVIDER: 'opencode' })).toBe(
+      'typesafe',
+    );
+    // An unknown name is ignored, so the keys decide.
+    expect(resolveJevProvider({}, { FAST_JEV_PROVIDER: 'openai', OPENCODE_API_KEY: 'oc' })).toBe(
+      'opencode',
+    );
   });
 
   it('prefers an explicit provider and an openrouter baseUrl', () => {
@@ -138,6 +161,28 @@ describe('provider helpers', () => {
     expect(isJevProvider(undefined)).toBe(false);
   });
 
+  it('holds the endpoint, key variable, and model together in one record', () => {
+    expect(PROVIDERS).toEqual({
+      typesafe: { url: SYSTEM_ONE_URL, envKey: 'TYPESAFE_API_KEY', model: 'jev-latest' },
+      openrouter: {
+        url: OPENROUTER_SYSTEM_ONE_URL,
+        envKey: 'OPENROUTER_API_KEY',
+        model: 'jev-latest',
+      },
+      opencode: {
+        url: 'https://opencode.ai/inference/v1/systemone',
+        envKey: 'OPENCODE_API_KEY',
+        model: 'jev-1.13',
+      },
+    });
+    // The two exported maps are views over the record, so they cannot drift.
+    for (const provider of Object.keys(PROVIDERS) as (keyof typeof PROVIDERS)[]) {
+      expect(PROVIDER_URLS[provider]).toBe(PROVIDERS[provider].url);
+      expect(PROVIDER_ENV_KEYS[provider]).toBe(PROVIDERS[provider].envKey);
+      expect(defaultModelFor(provider)).toBe(PROVIDERS[provider].model);
+    }
+  });
+
   it('names the environment variable of each provider', () => {
     expect(PROVIDER_ENV_KEYS).toEqual({
       typesafe: 'TYPESAFE_API_KEY',
@@ -209,6 +254,18 @@ describe('JevClient provider resolution', () => {
     expect(client.resolvedProvider).toBe('typesafe');
     await client.ask(state, questions);
     expect(calls[0]?.auth).toBe('Bearer ts');
+  });
+
+  it('honours FAST_JEV_PROVIDER on the library path when no key is supplied', async () => {
+    const { calls, fetchFn } = recordingFetch();
+    const client = new JevClient({
+      env: { FAST_JEV_PROVIDER: 'opencode', OPENCODE_API_KEY: 'oc' },
+      fetch: fetchFn,
+    });
+    expect(client.resolvedProvider).toBe('opencode');
+    await client.ask(state, questions);
+    expect(calls[0]?.url).toBe('https://opencode.ai/inference/v1/systemone');
+    expect(calls[0]?.auth).toBe('Bearer oc');
   });
 
   it('pins a supplied key to TypeSafe even when OPENROUTER_API_KEY is set', async () => {

@@ -21,6 +21,7 @@ import {
   applyRequestBudget,
   compact,
   DEFAULT_MODEL,
+  defaultModelFor,
   endpointHost,
   environmentEndpoint,
   estimateTokens,
@@ -112,7 +113,10 @@ export function resolveOmpOptions(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): OmpOptions {
   const options: OmpOptions = {
-    model: env['FAST_JEV_MODEL'] || OMP_DEFAULTS.model,
+    // Filled in below once the provider is known: an unset model follows the
+    // resolved provider, so `FAST_JEV_PROVIDER=opencode` cannot ship a slug that
+    // host rejects. `OMP_DEFAULTS.model` stays exported for callers that read it.
+    model: env['FAST_JEV_MODEL'] || '',
     minReductionRatio: envNumber(env['FAST_JEV_MIN_REDUCTION']) ?? OMP_DEFAULTS.minReductionRatio,
     requireKeepSignal:
       envBool(env['FAST_JEV_REQUIRE_KEEP_SIGNAL']) ?? OMP_DEFAULTS.requireKeepSignal,
@@ -132,6 +136,7 @@ export function resolveOmpOptions(
     const value = envNumber(env[name]);
     if (value !== undefined) options[key] = value;
   }
+  if (!options.model) options.model = defaultModelFor(resolveJevProvider(options, env));
   // A model swap has to carry its own context budget; the decision models range
   // from 7 168 to 524 288 usable request tokens.
   return applyRequestBudget(options);

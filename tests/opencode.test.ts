@@ -97,6 +97,17 @@ describe('resolvePluginOptions', () => {
     });
   });
 
+  it('derives the model from the resolved provider when none is set', () => {
+    expect(resolvePluginOptions({}, {}).model).toBe('jev-latest');
+    expect(resolvePluginOptions({ provider: 'opencode' }, {}).model).toBe('jev-1.13');
+    expect(resolvePluginOptions({ provider: 'openrouter' }, {}).model).toBe('jev-latest');
+    expect(resolvePluginOptions({}, { OPENCODE_API_KEY: 'oc' }).model).toBe('jev-1.13');
+    // An explicit model still wins over the provider default.
+    expect(resolvePluginOptions({ provider: 'opencode', model: 'typesafe/jev-1.13' }, {}).model).toBe(
+      'typesafe/jev-1.13',
+    );
+  });
+
   it('reads the FAST_JEV_* environment variables', () => {
     expect(
       resolvePluginOptions(
