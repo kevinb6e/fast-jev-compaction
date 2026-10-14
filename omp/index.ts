@@ -27,6 +27,7 @@ import {
   hasKeepSignal,
   isJevProvider,
   JevClient,
+  PROVIDER_OVERRIDE_ENV_KEY,
   renderTranscript,
   resolveJevEndpoint,
   resolveJevProvider,
@@ -118,7 +119,7 @@ export function resolveOmpOptions(
     maxSummaryTokens:
       envNumber(env['FAST_JEV_MAX_SUMMARY_TOKENS']) ?? OMP_DEFAULTS.maxSummaryTokens,
   };
-  const provider = env['FAST_JEV_PROVIDER'];
+  const provider = env[PROVIDER_OVERRIDE_ENV_KEY];
   if (isJevProvider(provider)) options.provider = provider;
   const apiKey = env['FAST_JEV_API_KEY'];
   if (apiKey) options.apiKey = apiKey;

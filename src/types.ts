@@ -128,6 +128,8 @@ export interface FittedState {
 }
 
 export interface CompactOptions {
+  /** Decision model name; defaults to the resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise). */
+  model?: string;
   /** Ongoing task description; defaults to the last few user prompts. */
   goal?: string;
   /** What the user asked this compaction to keep or drop, appended after the goal. */

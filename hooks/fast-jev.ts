@@ -11,13 +11,14 @@ import type {
 import { compact, hasKeepSignal, reductionRatio, resolveOptions } from '../src/compact.js';
 import {
   buildJevRequest,
-  DEFAULT_MODEL,
+  defaultModelFor,
   endpointHost,
   environmentEndpoint,
   isJevProvider,
   missingApiKeyError,
   parseJevResponse,
   PROVIDER_ENV_KEYS,
+  PROVIDER_OVERRIDE_ENV_KEY,
   resolveJevEndpoint,
   resolveJevProvider,
   type JevEndpointOptions,
@@ -37,7 +38,6 @@ const HOOK_DEFAULTS = {
   compactAtPercent: 60,
   minReductionRatio: 0.25,
   requireKeepSignal: true,
-  model: DEFAULT_MODEL,
 };
 
 export type HookFetchInit = {
@@ -62,7 +62,6 @@ export type HookConfig = CompactOptions & {
   compactAtPercent: number;
   minReductionRatio: number;
   requireKeepSignal: boolean;
-  model: string;
 };
 
 function optionNumber(options: PluginOptions, key: string, fallback: number): number {
@@ -108,8 +107,9 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
       'requireKeepSignal',
       HOOK_DEFAULTS.requireKeepSignal,
     ),
-    model: optionString(options, 'model') ?? HOOK_DEFAULTS.model,
   };
+  const model = optionString(options, 'model');
+  if (model) config.model = model;
   const apiKey = optionString(options, 'apiKey');
   if (apiKey) config.apiKey = apiKey;
   const provider = optionString(options, 'provider');
@@ -118,9 +118,7 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
   if (baseUrl) config.baseUrl = baseUrl;
   const goal = optionString(options, 'goal');
   if (goal) config.goal = goal;
-  // A model swap has to carry its own context budget: the ceilings differ by
-  // two orders of magnitude across the decision models.
-  return applyRequestBudget(config);
+  return config;
 }
 
 /** A `JevAsker` over the engine's `$.http.fetch`. */
@@ -211,11 +209,15 @@ export async function compactSession(
   // No environment lookup here: `register` has already resolved the provider
   // from the engine's env, so an unconfigured run names TypeSafe's key.
   const provider = resolveJevProvider({ provider: config.provider, baseUrl: config.baseUrl });
-  if (!config.apiKey) throw missingApiKeyError(provider);
+  const model = config.model ?? defaultModelFor(provider);
+  // A model swap has to carry its own context budget: the ceilings differ by
+  // two orders of magnitude across the decision models.
+  const options = applyRequestBudget({ ...config, model });
+  if (!options.apiKey) throw missingApiKeyError(provider);
   const result = await compact(
     messages,
-    jevAsker(fetchFn, config.apiKey, config.model, { provider, baseUrl: config.baseUrl }),
-    config,
+    jevAsker(fetchFn, options.apiKey, model, { provider, baseUrl: options.baseUrl }),
+    options,
   );
   return { result, messages: toSessionMessages(messages, result.messages) };
 }
@@ -282,9 +284,10 @@ export function decisionLogLines(
 
 /**
  * Resolves the provider and its key from the plugin's `userConfig`, then the
- * engine's environment, then the settings `env` block. The provider is picked
- * from whatever keys are actually set: a lone `OPENROUTER_API_KEY` calls Jev
- * through OpenRouter, a lone `OPENCODE_API_KEY` through OpenCode Console.
+ * engine's environment, then the settings `env` block. The provider comes from
+ * the `provider` option, then `FAST_JEV_PROVIDER` when it names one, then
+ * whatever keys are actually set: a lone `OPENROUTER_API_KEY` calls Jev through
+ * OpenRouter, a lone `OPENCODE_API_KEY` through OpenCode Console.
  */
 export async function getCredentials(
   $: {
@@ -316,12 +319,20 @@ export async function getCredentials(
       'OPENROUTER_API_KEY',
     ),
     [PROVIDER_ENV_KEYS.opencode]: prefer(await $.env.get('OPENCODE_API_KEY'), 'OPENCODE_API_KEY'),
+    [PROVIDER_OVERRIDE_ENV_KEY]: prefer(
+      await $.env.get('FAST_JEV_PROVIDER'),
+      PROVIDER_OVERRIDE_ENV_KEY,
+    ),
     JEV_BASE_URL: prefer(await $.env.get('JEV_BASE_URL'), 'JEV_BASE_URL'),
     TYPESAFE_BASE_URL: prefer(await $.env.get('TYPESAFE_BASE_URL'), 'TYPESAFE_BASE_URL'),
   };
+  const override = env[PROVIDER_OVERRIDE_ENV_KEY];
   // A supplied key pins the endpoint; an implicit one is found through `env`.
   const provider = resolveJevProvider(
-    { provider: config.provider, baseUrl: config.baseUrl },
+    {
+      provider: config.provider ?? (isJevProvider(override) ? override : undefined),
+      baseUrl: config.baseUrl,
+    },
     config.apiKey === undefined ? env : undefined,
   );
   const apiKey = config.apiKey ?? env[PROVIDER_ENV_KEYS[provider]];

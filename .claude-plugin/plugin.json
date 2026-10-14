@@ -1,6 +1,6 @@
 {
   "name": "fast-jev-compaction",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Verbatim Jev-guided compaction for Claude Code sessions.",
   "license": "MIT",
   "userConfig": {
@@ -59,8 +59,7 @@
     "model": {
       "type": "string",
       "title": "Jev model",
-      "description": "TypeSafe Jev model name.",
-      "default": "jev-latest"
+      "description": "Jev model name. Left unset, it follows the resolved provider: jev-1.13 on OpenCode Console, jev-latest otherwise."
     }
   }
 }

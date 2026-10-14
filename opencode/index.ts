@@ -22,6 +22,7 @@ import {
   hasKeepSignal,
   isJevProvider,
   JevClient,
+  PROVIDER_OVERRIDE_ENV_KEY,
   renderTranscript,
   resolveJevEndpoint,
   resolveJevProvider,
@@ -133,7 +134,7 @@ export function resolvePluginOptions(
       OPENCODE_DEFAULTS.requireKeepSignal,
     ),
   };
-  const provider = string(options['provider']) ?? env['FAST_JEV_PROVIDER'];
+  const provider = string(options['provider']) ?? env[PROVIDER_OVERRIDE_ENV_KEY];
   if (isJevProvider(provider)) resolved.provider = provider;
   const apiKey = string(options['apiKey']) ?? env['FAST_JEV_API_KEY'];
   if (apiKey) resolved.apiKey = apiKey;

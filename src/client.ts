@@ -11,7 +11,7 @@ import type { JevAsker, JevQuestions, JevResponse, JevState } from './types.js';
 export interface JevClientOptions {
   /** Defaults to the resolved provider's environment variable. */
   apiKey?: string;
-  /** Defaults to `jev-latest`. */
+  /** Defaults to the resolved provider's model (`jev-1.13` on OpenCode Console). */
   model?: string;
   /** Defaults to TypeSafe unless `baseUrl` or the environment says otherwise. */
   provider?: JevProvider;

@@ -7,6 +7,13 @@ export const DEFAULT_MODEL = 'jev-latest';
 /** The model OpenCode Console serves when none is named; `jev-1.13` costs $0.042/M input. */
 export const OPENCODE_DEFAULT_MODEL = 'jev-1.13';
 
+/**
+ * Forces the provider when the keys alone are ambiguous: a host that keeps
+ * several keys exported, or whose key is not exported under the provider's own
+ * name.
+ */
+export const PROVIDER_OVERRIDE_ENV_KEY = 'FAST_JEV_PROVIDER';
+
 /** Where Jev is served: TypeSafe directly, OpenRouter's System One route, or OpenCode Console's. */
 export type JevProvider = 'typesafe' | 'openrouter' | 'opencode';
 
@@ -30,6 +37,15 @@ export const OPENROUTER_KEY_PREFIX = 'sk-or-';
 /** Whether a value names a provider; anything else is ignored. */
 export function isJevProvider(value: unknown): value is JevProvider {
   return value === 'typesafe' || value === 'openrouter' || value === 'opencode';
+}
+
+/**
+ * The model to name when the caller asks for none. OpenCode Console serves
+ * System One under plain Jev slugs, and its `jev-latest` is a TypeSafe
+ * endpoint alias.
+ */
+export function defaultModelFor(provider: JevProvider): string {
+  return provider === 'opencode' ? OPENCODE_DEFAULT_MODEL : DEFAULT_MODEL;
 }
 
 /** The missing-key error of one provider; names the variable to export. */
@@ -164,9 +180,7 @@ export function buildJevRequest(
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      // OpenCode Console serves System One under plain Jev slugs; `jev-latest`
-      // is a TypeSafe endpoint alias.
-      model: params.model ?? (params.provider === 'opencode' ? OPENCODE_DEFAULT_MODEL : DEFAULT_MODEL),
+      model: params.model ?? defaultModelFor(params.provider ?? 'typesafe'),
       state,
       questions,
     }),

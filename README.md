@@ -168,9 +168,12 @@ export FAST_JEV_PROVIDER=opencode
 ```
 
 The provider is resolved in this order: an explicit `provider` option, then a
-`baseUrl` containing `openrouter.ai` or `opencode.ai`, then an OpenRouter-shaped
-key (`sk-or-`) in **either** key variable, then a lone `OPENROUTER_API_KEY` or
-`OPENCODE_API_KEY`, then a set `TYPESAFE_API_KEY`, then TypeSafe.
+`FAST_JEV_PROVIDER` naming one, then a `baseUrl` containing `openrouter.ai` or
+`opencode.ai`, then an OpenRouter-shaped key (`sk-or-`) in **either** key
+variable, then a lone `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`, then a set
+`TYPESAFE_API_KEY`, then TypeSafe. The hook reads `FAST_JEV_PROVIDER` from the
+engine environment first, then from the `env` block of the Claude Code
+settings; the omp and OpenCode adapters read the process environment.
 Detection reads the key's own shape because a key keeps it wherever it is
 exported — a common setup exports an OpenRouter key as `TYPESAFE_API_KEY`, and
 without that rule TypeSafe would be chosen and the request would 401.
@@ -178,8 +181,9 @@ An OpenCode Console key must be its only key in the environment; a set
 `TYPESAFE_API_KEY` wins over it.
 
 `baseUrl` always wins for the URL. The model IDs are `jev-latest`, `jev-1.13`
-and, on OpenRouter, `typesafe/jev-1.13`; on OpenCode Console the default is
-`jev-1.13` (use `jev-1.13-free` for the free model).
+and, on OpenRouter, `typesafe/jev-1.13`. When no `model` is set, the model
+follows the resolved provider: `jev-1.13` on OpenCode Console and `jev-latest`
+everywhere else (use `jev-1.13-free` for the free OpenCode model).
 
 The endpoint can also come from the environment, which is what a key issued for
 another host needs: `JEV_BASE_URL` as a complete endpoint URL, or
@@ -284,7 +288,7 @@ a source file.
 | --- | --- | --- |
 | `provider` | inferred | `typesafe`, `openrouter` or `opencode`; inferred from `baseUrl` or the key |
 | `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
-| `model` | `jev-latest` | Decision model name; see [Choosing a decision model](#choosing-a-decision-model) |
+| `model` | resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise) | Decision model name; see [Choosing a decision model](#choosing-a-decision-model) |
 | `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone`, `https://openrouter.ai/api/v1/systemone` or `https://opencode.ai/inference/v1/systemone`) |
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |

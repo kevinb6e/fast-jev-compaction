@@ -56,24 +56,28 @@ The plugin declares these `userConfig` values in
 | `maxStateTokens` | `25000` |
 | `maxRequestTokens` | `30000` |
 | `truncateHeadChars` | `300` |
-| `model` | `jev-latest` |
+| `model` | resolved provider's |
 
 The key can be supplied as the sensitive `apiKey` plugin option or through
-`TYPESAFE_API_KEY` / `OPENROUTER_API_KEY`. The environment variable is the
-recommended development setup. Each variable is read from the process
-environment first, then from the `env` block of the Claude Code settings.
+`TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY`, and
+`FAST_JEV_PROVIDER` names the provider when the keys alone are ambiguous. The
+environment variable is the recommended development setup. Each variable is
+read from the process environment first, then from the `env` block of the
+Claude Code settings.
 
 The provider — and with it the endpoint — is resolved by `src/request.ts`: an
-explicit `provider` plugin option, then a `baseUrl` containing `openrouter.ai`
-or `opencode.ai`, then a `sk-or-` key in either variable, then a lone
-`OPENROUTER_API_KEY` or `OPENCODE_API_KEY`, then a set `TYPESAFE_API_KEY`, then
-TypeSafe. `OPENCODE_API_KEY` works with no further setting only when it is the
-only key; `provider: "opencode"` forces the choice, and `baseUrl` overrides
-the URL. The OpenCode model defaults to `jev-1.13` (`jev-1.13-free` is the
-free one). `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read from those same two
-environments when no `baseUrl` is set, so the transcript follows an endpoint
-exported for another tool; the toast names the host it went to. See the root
-README, "Providers".
+explicit `provider` plugin option, then `FAST_JEV_PROVIDER`, then a `baseUrl`
+containing `openrouter.ai` or `opencode.ai`, then a `sk-or-` key in either
+variable, then a lone `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`, then a set
+`TYPESAFE_API_KEY`, then TypeSafe. `OPENCODE_API_KEY` works with no further
+setting only when it is the only key; `provider: "opencode"` or
+`FAST_JEV_PROVIDER=opencode` forces the choice, and `baseUrl` overrides the
+URL. The model follows the resolved provider unless `model` is set:
+`jev-1.13` on OpenCode Console (`jev-1.13-free` is the free one) and
+`jev-latest` otherwise. `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read from
+those same two environments when no `baseUrl` is set, so the transcript follows
+an endpoint exported for another tool; the toast names the host it went to. See
+the root README, "Providers".
 
 Every option except `apiKey`, `compactAtPercent`, `minReductionRatio`,
 `requireKeepSignal` and `model` is passed straight to the library; see the root

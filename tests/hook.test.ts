@@ -8,6 +8,7 @@ import {
   resolveHookConfig,
   summarize,
   toSessionMessages,
+  type HookConfig,
 } from '../hooks/fast-jev.ts';
 import {
   applyDecisions,
@@ -16,6 +17,7 @@ import {
   endpointHost,
   ENDPOINT_ENV_KEYS,
   PROVIDER_ENV_KEYS,
+  PROVIDER_OVERRIDE_ENV_KEY,
   type Message,
 } from '../src/index.js';
 
@@ -82,7 +84,11 @@ describe('getCredentials', () => {
     const asked: string[] = [];
     await getCredentials(host(asked) as never, config);
     expect([...asked].sort()).toEqual(
-      [...Object.values(PROVIDER_ENV_KEYS), ...Object.values(ENDPOINT_ENV_KEYS)].sort(),
+      [
+        ...Object.values(PROVIDER_ENV_KEYS),
+        ...Object.values(ENDPOINT_ENV_KEYS),
+        PROVIDER_OVERRIDE_ENV_KEY,
+      ].sort(),
     );
   });
 
@@ -98,20 +104,52 @@ describe('getCredentials', () => {
   it('returns the provider with no key rather than throwing', async () => {
     expect(await getCredentials(host([]) as never, config)).toEqual({ provider: 'typesafe' });
   });
+
+  it('takes the provider from FAST_JEV_PROVIDER when no key pins one', async () => {
+    expect(
+      await getCredentials(host([], { FAST_JEV_PROVIDER: 'opencode' }) as never, config),
+    ).toEqual({ provider: 'opencode' });
+  });
+
+  it('lets the provider option win over FAST_JEV_PROVIDER', async () => {
+    const asked: string[] = [];
+    const credentials = await getCredentials(
+      host(asked, { FAST_JEV_PROVIDER: 'openrouter' }) as never,
+      { ...config, provider: 'opencode' },
+    );
+    expect(credentials).toEqual({ provider: 'opencode' });
+  });
+
+  it('takes the override over a set TYPESAFE_API_KEY, keeping the override key', async () => {
+    const credentials = await getCredentials(
+      host([], {
+        FAST_JEV_PROVIDER: 'opencode',
+        TYPESAFE_API_KEY: 'ts-key',
+        OPENCODE_API_KEY: 'oc-key',
+      }) as never,
+      config,
+    );
+    expect(credentials).toEqual({ apiKey: 'oc-key', provider: 'opencode' });
+  });
+
+  it('ignores an override no provider name matches', async () => {
+    const credentials = await getCredentials(
+      host([], { FAST_JEV_PROVIDER: 'openai', OPENROUTER_API_KEY: 'sk-or-v1-abc' }) as never,
+      config,
+    );
+    expect(credentials).toEqual({ apiKey: 'sk-or-v1-abc', provider: 'openrouter' });
+  });
 });
 
 describe('hook config', () => {
   it('reads userConfig values and falls back to defaults', () => {
-    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, requireKeepSignal: true, model: 'jev-latest', maxStateTokens: 25000, maxRequestTokens: 30000 });
+    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, requireKeepSignal: true });
     expect(
       resolveHookConfig({ apiKey: 'k', keepThreshold: 0.3, maxStateTokens: 1000, model: 'jev-x', goal: 'g', compactAtPercent: 'no' }),
     ).toEqual({
       apiKey: 'k',
       keepThreshold: 0.3,
       maxStateTokens: 1000,
-      // 'jev-x' is not a listed decision model, so the request ceiling falls
-      // back rather than assuming the default model's 30 000
-      maxRequestTokens: 8192,
       model: 'jev-x',
       goal: 'g',
       compactAtPercent: 60,
@@ -273,6 +311,37 @@ describe('compactSession', () => {
     expect(summarize(output)).toMatch(/^\d+% reduction; 1 kept, 1 call_dropped; state ~\d+ tokens \(full\) in 1 request\(s\)$/);
     expect(decisionLog(output)).toBe('t1:Read:drop_call/call=0.10/result=0.10 t2:Bash:keep/call=0.90/result=0.90');
     expect(decisionLogLines(output)).toEqual([`decisions: ${decisionLog(output)}`]);
+  });
+
+  it('defaults the model to the resolved provider, and lets an explicit one win', async () => {
+    const modelOf = async (config: Partial<HookConfig>): Promise<string> => {
+      const bodies: string[] = [];
+      await compactSession(
+        transcript(),
+        { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k', ...config },
+        jevFetch(() => 0.9, bodies),
+      );
+      return (JSON.parse(bodies[0]!) as { model: string }).model;
+    };
+    expect(await modelOf({})).toBe('jev-latest');
+    expect(await modelOf({ provider: 'opencode' })).toBe('jev-1.13');
+    expect(await modelOf({ provider: 'opencode', model: 'jev-x' })).toBe('jev-x');
+  });
+
+  it('sizes the state budget from the resolved model', async () => {
+    const big = transcript();
+    big[0]!.text = 'x'.repeat(40_000);
+    const stageOf = async (config: Partial<HookConfig>): Promise<string> => {
+      const { result } = await compactSession(
+        big,
+        { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k', ...config },
+        jevFetch(() => 0.9),
+      );
+      return result.stats.stateStage;
+    };
+    expect(await stageOf({})).toBe('full');
+    // 'jev-x' is unlisted, so the 8 192-token fallback ceiling forces the fit
+    expect(await stageOf({ model: 'jev-x' })).not.toBe('full');
   });
 
   it('splits a long decision log into ui.log lines under the host limit', async () => {
