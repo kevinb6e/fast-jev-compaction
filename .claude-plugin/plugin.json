@@ -1,6 +1,6 @@
 {
   "name": "fast-jev-compaction",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Verbatim Jev-guided compaction for Claude Code sessions.",
   "license": "MIT",
   "userConfig": {
@@ -37,8 +37,19 @@
     "requireKeepSignal": {
       "type": "boolean",
       "title": "Require a keep signal",
-      "description": "Fall back to the built-in summarizer when Jev drops every tool call it judged, rather than applying the largest possible reduction with no evidence left behind.",
-      "default": true
+      "description": "Fall back to the built-in summarizer when Jev would drop every tool call it judged, rather than applying the largest reduction with no evidence left behind. Off by default to match the original replacement behavior.",
+      "default": false
+    },
+    "measureNativeSummary": {
+      "type": "boolean",
+      "title": "Measure the built-in summary",
+      "description": "On a replaced compaction, also run the built-in summarizer to record its message and token size in the measurement. Costs an extra built-in compaction call, so it is off by default.",
+      "default": false
+    },
+    "metricsPath": {
+      "type": "string",
+      "title": "Metrics file",
+      "description": "Path of a JSONL file the hook appends one measurement line to per compaction. Left unset, the FAST_JEV_METRICS environment variable is read instead."
     },
     "maxStateTokens": {
       "type": "number",

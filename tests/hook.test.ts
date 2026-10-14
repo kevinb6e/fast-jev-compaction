@@ -5,6 +5,9 @@ import {
   decisionLogLines,
   getCredentials,
   hookFallbackReason,
+  logMeasurement,
+  measurementOf,
+  register,
   resolveHookConfig,
   summarize,
   toSessionMessages,
@@ -143,7 +146,12 @@ describe('getCredentials', () => {
 
 describe('hook config', () => {
   it('reads userConfig values and falls back to defaults', () => {
-    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, requireKeepSignal: true });
+    expect(resolveHookConfig({})).toEqual({
+      compactAtPercent: 60,
+      minReductionRatio: 0.25,
+      requireKeepSignal: false,
+      measureNativeSummary: false,
+    });
     expect(
       resolveHookConfig({ apiKey: 'k', keepThreshold: 0.3, maxStateTokens: 1000, model: 'jev-x', goal: 'g', compactAtPercent: 'no' }),
     ).toEqual({
@@ -154,7 +162,8 @@ describe('hook config', () => {
       goal: 'g',
       compactAtPercent: 60,
       minReductionRatio: 0.25,
-      requireKeepSignal: true,
+      requireKeepSignal: false,
+      measureNativeSummary: false,
     });
   });
 
@@ -243,14 +252,16 @@ describe('keep signal', () => {
       await compactSession(transcript(), config, jevFetch((name) => (name === 'call_t2' ? 0.9 : 0.1)))
     ).result;
 
-    expect(hookFallbackReason(dropped, config)).toMatch(/^no keep signal \(/);
-    expect(hookFallbackReason(survivor, config)).toBeNull();
-    expect(hookFallbackReason(dropped, { ...config, requireKeepSignal: false })).toBeNull();
+    expect(hookFallbackReason(dropped, { ...config, requireKeepSignal: true })).toMatch(
+      /^no keep signal \(/,
+    );
+    expect(hookFallbackReason(survivor, { ...config, requireKeepSignal: true })).toBeNull();
+    expect(hookFallbackReason(dropped, config)).toBeNull();
   });
 
-  it('defaults on and can be turned off through userConfig', () => {
-    expect(resolveHookConfig({}).requireKeepSignal).toBe(true);
-    expect(resolveHookConfig({ requireKeepSignal: false }).requireKeepSignal).toBe(false);
+  it('defaults off and can be turned on through userConfig', () => {
+    expect(resolveHookConfig({}).requireKeepSignal).toBe(false);
+    expect(resolveHookConfig({ requireKeepSignal: true }).requireKeepSignal).toBe(true);
   });
 });
 
@@ -362,6 +373,192 @@ describe('compactSession', () => {
     await expect(
       compactSession(transcript(), { ...config, apiKey: 'k' }, async () => ({ status: 500, ok: false, text: 'x' })),
     ).rejects.toThrow(/500/);
+  });
+});
+
+describe('compaction measurement', () => {
+  const MEASURE_PREFIX = 'fast-jev-compaction:measure ';
+  const nativeMessages: SessionMessage[] = [
+    message('user', 'native built-in summary', { handle: 'native-0' }),
+  ];
+  /** Jev answers that drop the first call and keep the second. */
+  const dropFirst = (name: string): number =>
+    name === 'call_t2' || name === 'result_t2' ? 0.9 : 0.1;
+
+  type CompactEvent = { trigger: string; messages: SessionMessage[] };
+  type CompactOutcome = { messages?: readonly SessionMessage[] };
+  type CompactHandler = (
+    ctx: unknown,
+    event: CompactEvent,
+    next: (event: CompactEvent) => Promise<CompactOutcome>,
+  ) => Promise<CompactOutcome>;
+
+  /** Drives the public `register` with a fake engine, capturing the handler. */
+  function harness(
+    options: Record<string, unknown>,
+    answers: (name: string) => number = dropFirst,
+    env: Record<string, string> = {},
+  ) {
+    const handlers: Record<string, CompactHandler> = {};
+    const on = ((pattern: string, hook: CompactHandler) => {
+      handlers[pattern] = hook;
+    }) as never;
+    register(on, options as never);
+
+    const logs: string[] = [];
+    const toasts: string[] = [];
+    const files = new Map<string, string>();
+    const writes: string[] = [];
+    const answered = jevFetch(answers);
+    const envValues: Record<string, string> = { TYPESAFE_API_KEY: 'k', ...env };
+    const engine = {
+      env: { get: async (name: string) => envValues[name] },
+      settings: { read: async () => ({ env: {} }) },
+      http: { fetch: (url: string, init?: { body?: string }) => answered(url, init) },
+      ui: {
+        log: (text: string) => logs.push(text),
+        toast: (text: string) => toasts.push(text),
+      },
+      fs: {
+        read: async (path: string) => {
+          if (!files.has(path)) throw new Error(`ENOENT: ${path}`);
+          return files.get(path)!;
+        },
+        write: async (path: string, text: string) => {
+          files.set(path, text);
+          writes.push(text);
+        },
+      },
+      session: {
+        usage: async () => ({ context: { tokens: 8000, window: 200_000, percent: 4 } }),
+      },
+    };
+
+    let nextCalls = 0;
+    const next = async (_event: CompactEvent): Promise<CompactOutcome> => {
+      nextCalls += 1;
+      return { messages: nativeMessages };
+    };
+    const handler = handlers['session.compact']!;
+    const run = (event: CompactEvent) => handler(engine, event, next);
+    const measures = () =>
+      logs
+        .filter((line) => line.startsWith(MEASURE_PREFIX))
+        .map((line) => JSON.parse(line.slice(MEASURE_PREFIX.length)) as Record<string, unknown>);
+    return { run, logs, toasts, files, writes, measures, nextCalls: () => nextCalls };
+  }
+
+  it('returns the pruned messages and logs a replaced measurement', async () => {
+    const h = harness({ preserveRecentMessages: 1 });
+    const out = await h.run({ trigger: 'manual', messages: transcript() });
+
+    expect(out.messages?.map((m) => m.handle)).toEqual([
+      'h-0',
+      'h-tool-2',
+      'r-tool-2',
+      'h-5',
+      'h-6',
+    ]);
+    expect(out.messages).not.toBe(nativeMessages);
+    expect(h.nextCalls()).toBe(0);
+    expect(h.toasts[0]).toContain('kept 5/7 messages, no summary');
+
+    const measurements = h.measures();
+    expect(measurements).toHaveLength(1);
+    const m = measurements[0]!;
+    expect(m.outcome).toBe('replaced');
+    expect(m.trigger).toBe('manual');
+    expect(m.messagesBefore).toBe(7);
+    expect(m.messagesAfter).toBe(5);
+    expect(m.contextTokens).toBe(8000);
+    expect(m.contextPercent).toBe(4);
+    expect((m.tokensBefore as number) > (m.tokensAfter as number)).toBe(true);
+    expect(m.reduction).toBe(((m.charsBefore as number) - (m.charsAfter as number)) / (m.charsBefore as number));
+    expect('nativeSummaryMessages' in m).toBe(false);
+    expect('fallbackReason' in m).toBe(false);
+  });
+
+  it('appends the same measurement line to the metrics file', async () => {
+    const h = harness({ preserveRecentMessages: 1, metricsPath: 'metrics.jsonl' });
+    await h.run({ trigger: 'auto', messages: transcript() });
+
+    const line = h.logs.filter((entry) => entry.startsWith(MEASURE_PREFIX))[0]!.slice(
+      MEASURE_PREFIX.length,
+    );
+    expect(h.writes).toEqual([`${line}\n`]);
+    expect(h.files.get('metrics.jsonl')).toBe(`${line}\n`);
+  });
+
+  it('falls back to FAST_JEV_METRICS when no metricsPath option is set', async () => {
+    const h = harness({ preserveRecentMessages: 1 }, dropFirst, {
+      FAST_JEV_METRICS: 'env-metrics.jsonl',
+    });
+    await h.run({ trigger: 'plugin', messages: transcript() });
+
+    expect(h.files.has('env-metrics.jsonl')).toBe(true);
+  });
+
+  it('measures the built-in summary when asked, still returning the prune', async () => {
+    const h = harness({ preserveRecentMessages: 1, measureNativeSummary: true });
+    const out = await h.run({ trigger: 'manual', messages: transcript() });
+
+    expect(h.nextCalls()).toBe(1);
+    expect(out.messages?.map((m) => m.handle)).toEqual([
+      'h-0',
+      'h-tool-2',
+      'r-tool-2',
+      'h-5',
+      'h-6',
+    ]);
+    const m = h.measures()[0]!;
+    expect(m.outcome).toBe('replaced');
+    expect(m.nativeSummaryMessages).toBe(nativeMessages.length);
+    expect((m.nativeSummaryTokens as number) > 0).toBe(true);
+  });
+
+  it('logs a fallback measurement and returns the built-in compaction', async () => {
+    const h = harness(
+      { preserveRecentMessages: 1, minReductionRatio: 0, requireKeepSignal: true },
+      () => 0.1,
+    );
+    const out = await h.run({ trigger: 'manual', messages: transcript() });
+
+    expect(out.messages).toBe(nativeMessages);
+    expect(h.nextCalls()).toBe(1);
+    const m = h.measures()[0]!;
+    expect(m.outcome).toBe('fallback');
+    expect(m.fallbackReason).toMatch(/^no keep signal \(/);
+    expect(m.messagesAfter).toBe(nativeMessages.length);
+    expect(m.nativeSummaryMessages).toBe(nativeMessages.length);
+  });
+
+  it('logs a one-line failure when the metrics write fails, without throwing', async () => {
+    const lines: string[] = [];
+    const m = measurementOf({
+      at: '2020-01-01T00:00:00.000Z',
+      trigger: 'manual',
+      outcome: 'replaced',
+      before: transcript(),
+      after: transcript(),
+      stateTokens: 0,
+      requests: 0,
+      ms: 0,
+    });
+    await logMeasurement(
+      {
+        ui: { log: (text: string) => lines.push(text) },
+        fs: {
+          read: async () => '',
+          write: async () => {
+            throw new Error('EACCES');
+          },
+        },
+      },
+      m,
+      'metrics.jsonl',
+    );
+    expect(lines[0]).toBe(`${MEASURE_PREFIX}${JSON.stringify(m)}`);
+    expect(lines[1]).toBe('fast-jev-compaction:measure failed to write metrics.jsonl (EACCES)');
   });
 });
 

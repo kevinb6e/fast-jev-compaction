@@ -9,6 +9,8 @@ import type {
 } from 'claude-code';
 
 import { compact, hasKeepSignal, reductionRatio, resolveOptions } from '../src/compact.js';
+import { renderTranscript } from '../src/render.js';
+import { estimateTokens } from '../src/state.js';
 import {
   buildJevRequest,
   defaultModelFor,
@@ -37,7 +39,8 @@ import type {
 const HOOK_DEFAULTS = {
   compactAtPercent: 60,
   minReductionRatio: 0.25,
-  requireKeepSignal: true,
+  requireKeepSignal: false,
+  measureNativeSummary: false,
 };
 
 export type HookFetchInit = {
@@ -62,6 +65,8 @@ export type HookConfig = CompactOptions & {
   compactAtPercent: number;
   minReductionRatio: number;
   requireKeepSignal: boolean;
+  measureNativeSummary: boolean;
+  metricsPath?: string;
 };
 
 function optionNumber(options: PluginOptions, key: string, fallback: number): number {
@@ -107,9 +112,16 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
       'requireKeepSignal',
       HOOK_DEFAULTS.requireKeepSignal,
     ),
+    measureNativeSummary: optionBool(
+      options,
+      'measureNativeSummary',
+      HOOK_DEFAULTS.measureNativeSummary,
+    ),
   };
   const model = optionString(options, 'model');
   if (model) config.model = model;
+  const metricsPath = optionString(options, 'metricsPath');
+  if (metricsPath) config.metricsPath = metricsPath;
   const apiKey = optionString(options, 'apiKey');
   if (apiKey) config.apiKey = apiKey;
   const provider = optionString(options, 'provider');
@@ -283,6 +295,119 @@ export function decisionLogLines(
 }
 
 /**
+ * Evidence for the token and cost claims, written per compaction: what the
+ * transcript weighed before and after, the state the decisions needed, and
+ * (optionally) what the built-in summarizer would have produced.
+ */
+export type CompactionMeasurement = {
+  at: string; // ISO timestamp
+  trigger: string; // event.trigger
+  outcome: 'replaced' | 'fallback';
+  messagesBefore: number;
+  messagesAfter: number;
+  charsBefore: number;
+  charsAfter: number;
+  tokensBefore: number; // estimated, same basis as tokensAfter
+  tokensAfter: number; // estimated
+  reduction: number; // (charsBefore - charsAfter) / charsBefore, 0 when charsBefore is 0
+  stateTokens: number;
+  requests: number;
+  ms: number;
+  contextTokens?: number; // real value from $.session.usage().context.tokens when present
+  contextPercent?: number; // $.session.usage().context.percent when present
+  fallbackReason?: string; // only on outcome 'fallback'
+  nativeSummaryMessages?: number; // built-in compaction result, when measured
+  nativeSummaryTokens?: number; // estimated with the same estimator
+};
+
+/**
+ * Sizes a compaction from the same estimator and renderer the library uses, so
+ * the numbers line up with the ones `result.stats` reports. Pure: the caller
+ * supplies the timestamp and the transcripts.
+ */
+export function measurementOf(input: {
+  at: string;
+  trigger: string;
+  outcome: CompactionMeasurement['outcome'];
+  before: readonly Message[];
+  after: readonly Message[];
+  stateTokens: number;
+  requests: number;
+  ms: number;
+  contextTokens?: number;
+  contextPercent?: number;
+  fallbackReason?: string;
+  nativeSummary?: readonly Message[];
+}): CompactionMeasurement {
+  const beforeText = renderTranscript(input.before);
+  const afterText = renderTranscript(input.after);
+  const charsBefore = beforeText.length;
+  const charsAfter = afterText.length;
+  const measurement: CompactionMeasurement = {
+    at: input.at,
+    trigger: input.trigger,
+    outcome: input.outcome,
+    messagesBefore: input.before.length,
+    messagesAfter: input.after.length,
+    charsBefore,
+    charsAfter,
+    tokensBefore: estimateTokens(beforeText),
+    tokensAfter: estimateTokens(afterText),
+    reduction: charsBefore === 0 ? 0 : (charsBefore - charsAfter) / charsBefore,
+    stateTokens: input.stateTokens,
+    requests: input.requests,
+    ms: input.ms,
+  };
+  if (input.contextTokens !== undefined) measurement.contextTokens = input.contextTokens;
+  if (input.contextPercent !== undefined) measurement.contextPercent = input.contextPercent;
+  if (input.fallbackReason !== undefined) measurement.fallbackReason = input.fallbackReason;
+  if (input.nativeSummary) {
+    measurement.nativeSummaryMessages = input.nativeSummary.length;
+    measurement.nativeSummaryTokens = estimateTokens(renderTranscript(input.nativeSummary));
+  }
+  return measurement;
+}
+
+/** The slice of `$` the measurement logger touches. */
+type MeasurementLog = {
+  ui: { log: (text: string) => void };
+  fs: {
+    read: (path: string) => Promise<string>;
+    write: (path: string, text: string) => Promise<void>;
+  };
+};
+
+/**
+ * Always logs the measurement, and appends it to the JSONL file when one is
+ * configured. Best-effort throughout: a missing file is created, and a failed
+ * write is logged in one line rather than allowed to break the compaction.
+ */
+export async function logMeasurement(
+  $: MeasurementLog,
+  m: CompactionMeasurement,
+  metricsPath?: string,
+): Promise<void> {
+  const line = JSON.stringify(m);
+  $.ui.log(`fast-jev-compaction:measure ${line}`);
+  if (!metricsPath) return;
+  try {
+    let existing = '';
+    try {
+      existing = await $.fs.read(metricsPath);
+    } catch {
+      existing = '';
+    }
+    await $.fs.write(metricsPath, existing + line + '\n');
+  } catch (error) {
+    $.ui.log(
+      `fast-jev-compaction:measure failed to write ${metricsPath} (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    );
+  }
+}
+
+/**
  * Resolves the provider and its key from the plugin's `userConfig`, then the
  * engine's environment, then the settings `env` block. The provider comes from
  * the `provider` option, then `FAST_JEV_PROVIDER` when it names one, then
@@ -373,11 +498,39 @@ export function hookFallbackReason(
     : null;
 }
 
+/** The context window's fill, best-effort: a usage failure just drops the fields. */
+async function contextFigures($: {
+  session: { usage: () => Promise<{ context: { tokens?: number; percent?: number } }> };
+}): Promise<{ contextTokens?: number; contextPercent?: number }> {
+  try {
+    const { context } = await $.session.usage();
+    const figures: { contextTokens?: number; contextPercent?: number } = {};
+    if (typeof context.tokens === 'number') figures.contextTokens = context.tokens;
+    if (typeof context.percent === 'number') figures.contextPercent = context.percent;
+    return figures;
+  } catch {
+    return {};
+  }
+}
+
 export const register: Register = (on: On, options: PluginOptions) => {
   const configured = resolveHookConfig(options);
   let compacting = false;
 
   on('session.compact', async ($, event, next) => {
+    const started = Date.now();
+    const at = new Date().toISOString();
+    const usage = await contextFigures($);
+    // `FAST_JEV_METRICS` is spelled out here rather than in `getCredentials`,
+    // whose environment reads a test pins to the provider maps.
+    let metricsPath = configured.metricsPath;
+    if (metricsPath === undefined) {
+      try {
+        metricsPath = await $.env.get('FAST_JEV_METRICS');
+      } catch {
+        metricsPath = undefined;
+      }
+    }
     try {
       const credentials = await getCredentials($, configured);
       const config = { ...configured, ...credentials, instructions: event.instructions };
@@ -392,19 +545,77 @@ export const register: Register = (on: On, options: PluginOptions) => {
       const reason = hookFallbackReason(result, config, host);
       if (reason) {
         notify($, `fallback to built-in summary (${reason})`);
-        return next(event);
+        const native = await next(event);
+        await logMeasurement(
+          $,
+          measurementOf({
+            at,
+            trigger: event.trigger,
+            outcome: 'fallback',
+            before: event.messages,
+            after: native.messages ?? event.messages,
+            stateTokens: result.stats.stateTokens,
+            requests: result.stats.requests,
+            ms: Date.now() - started,
+            ...usage,
+            fallbackReason: reason,
+            ...(native.messages ? { nativeSummary: native.messages } : {}),
+          }),
+          metricsPath,
+        );
+        return native;
+      }
+      let nativeSummary: readonly SessionMessage[] | undefined;
+      if (config.measureNativeSummary) {
+        try {
+          nativeSummary = (await next(event)).messages;
+        } catch {
+          nativeSummary = undefined;
+        }
       }
       notify(
         $,
         `kept ${messages.length}/${event.messages.length} messages, no summary (${summarize(result, host)})`,
       );
+      await logMeasurement(
+        $,
+        measurementOf({
+          at,
+          trigger: event.trigger,
+          outcome: 'replaced',
+          before: event.messages,
+          after: messages,
+          stateTokens: result.stats.stateTokens,
+          requests: result.stats.requests,
+          ms: Date.now() - started,
+          ...usage,
+          ...(nativeSummary ? { nativeSummary } : {}),
+        }),
+        metricsPath,
+      );
       return { messages };
     } catch (error) {
-      notify(
+      const reasonText = error instanceof Error ? error.message : String(error);
+      notify($, `fallback to built-in summary (${reasonText})`);
+      const native = await next(event);
+      await logMeasurement(
         $,
-        `fallback to built-in summary (${error instanceof Error ? error.message : String(error)})`,
+        measurementOf({
+          at,
+          trigger: event.trigger,
+          outcome: 'fallback',
+          before: event.messages,
+          after: native.messages ?? event.messages,
+          stateTokens: 0,
+          requests: 0,
+          ms: Date.now() - started,
+          ...usage,
+          fallbackReason: reasonText,
+          ...(native.messages ? { nativeSummary: native.messages } : {}),
+        }),
+        metricsPath,
       );
-      return next(event);
+      return native;
     }
   });
 

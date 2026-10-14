@@ -52,7 +52,9 @@ The plugin declares these `userConfig` values in
 | `preserveRecentMessages` | `6` |
 | `compactAtPercent` | `60` |
 | `minReductionRatio` | `0.25` |
-| `requireKeepSignal` | `true` |
+| `requireKeepSignal` | `false` |
+| `measureNativeSummary` | `false` |
+| `metricsPath` | unset |
 | `maxStateTokens` | `25000` |
 | `maxRequestTokens` | `30000` |
 | `truncateHeadChars` | `300` |
@@ -80,24 +82,49 @@ an endpoint exported for another tool; the toast names the host it went to. See
 the root README, "Providers".
 
 Every option except `apiKey`, `compactAtPercent`, `minReductionRatio`,
-`requireKeepSignal` and `model` is passed straight to the library; see the root
-README for what they do. The event's `instructions` (whatever the user typed
-after `/compact`) are carried into the state's goal, so the decisions know what
-the compaction is for. The `session.compact` hook runs the Jev requests
-concurrently. If Jev fails, the response is malformed, the key is unavailable,
-the history cannot be fitted into the state budget, Jev kept none of the calls
-it judged, or the estimated reduction is below `minReductionRatio`, the hook
-logs a fallback and delegates to Claude Code's built-in compaction. The last
-two are the trade `requireKeepSignal` makes: with it on, a run that would
-delete every candidate — the largest reduction the library can produce, and the
-one that leaves the narration with no evidence behind it — falls back instead,
-so an install that worked before may summarize more often. Set it to `false` to
-apply those prunes again. The outcome is shown as a toast and logged with the
-reduction, per-reason counts, state size and request count; a per-call
-`decisions:` line with both probabilities is logged for diagnosis. The
-`turn.complete` hook requests
+`requireKeepSignal`, `measureNativeSummary`, `metricsPath` and `model` is
+passed straight to the library; see the root README for what they do. The
+event's `instructions` (whatever the user typed after `/compact`) are carried
+into the state's goal, so the decisions know what the compaction is for. The
+`session.compact` hook runs the Jev requests concurrently. If Jev fails, the
+response is malformed, the key is unavailable, the history cannot be fitted
+into the state budget, or the estimated reduction is below `minReductionRatio`,
+the hook logs a fallback and delegates to Claude Code's built-in compaction —
+as it also does, when `requireKeepSignal` is on, for a run that kept none of
+the calls it judged. That guard is off by default, matching the original
+replacement behavior: a run that would delete every candidate — the largest
+reduction the library can produce, and the one that leaves the narration with
+no evidence behind it — is applied. Set `requireKeepSignal` to `true` to fall
+back instead, so an install that worked before may summarize more often. The
+outcome is shown as a toast and logged with the reduction, per-reason counts,
+state size and request count; a per-call `decisions:` line with both
+probabilities is logged for diagnosis. The `turn.complete` hook requests
 compaction when `context.percent` reaches `compactAtPercent`, with an
 in-flight guard.
+
+## Measurement
+
+Every compaction logs one line, whether it replaced the history or fell back:
+
+```
+fast-jev-compaction:measure {"at":"…","trigger":"manual","outcome":"replaced",…}
+```
+
+The JSON carries the message and character counts before and after, estimated
+`tokensBefore` / `tokensAfter` (the library's own estimator over the rendered
+transcript, so before and after share one basis), the `reduction`, the state size and
+request count, the elapsed `ms`, and the context window's real `contextTokens`
+/ `contextPercent` when `$.session.usage()` reports them. A fallback line adds
+`fallbackReason`.
+
+Set `metricsPath` (or export `FAST_JEV_METRICS`, read from the engine
+environment) to also append the same JSON as one line to that file. The write
+is best-effort: a missing file is created, and a failure is logged in one line
+rather than allowed to break the compaction. `measureNativeSummary` is off by
+default because, when on, a replaced compaction also runs the built-in
+summarizer once to record its `nativeSummaryMessages` / `nativeSummaryTokens`
+— a whole extra summarizer call — so turn it on to compare kept-against-summary
+rather than for routine use.
 
 ## Scope and caveat
 

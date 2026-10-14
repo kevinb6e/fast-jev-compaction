@@ -57,7 +57,7 @@ export interface OpenCodeOptions extends CompactOptions {
 export const OPENCODE_DEFAULTS = {
   model: DEFAULT_MODEL,
   minReductionRatio: 0.25,
-  requireKeepSignal: true,
+  requireKeepSignal: false,
   maxSummaryTokens: 16384,
 } as const;
 

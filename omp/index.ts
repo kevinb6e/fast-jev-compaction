@@ -70,7 +70,7 @@ export interface OmpOptions extends CompactOptions {
 export const OMP_DEFAULTS = {
   model: DEFAULT_MODEL,
   minReductionRatio: 0.25,
-  requireKeepSignal: true,
+  requireKeepSignal: false,
   maxSummaryTokens: 16384,
 } as const;
 

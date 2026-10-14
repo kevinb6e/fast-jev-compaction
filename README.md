@@ -26,7 +26,8 @@ Each adapter is a thin layer over the shared core. It hands the harness's
 compaction hook a Jev-pruned transcript, and steps aside — leaving the
 harness's own summarizer to run — when Jev fails, the history is too short to
 shrink, the reduction is below `minReductionRatio`, or Jev kept none of the
-calls it judged. Nothing about the
+calls it judged while the `requireKeepSignal` guard is on (the guard is off by
+default in every adapter). Nothing about the
 adapter changes the scoring; see [How it works](#how-it-works).
 
 | Harness | Entry point | Installed as |
@@ -308,12 +309,38 @@ stage was needed, and the number of requests.
 The OpenCode and omp adapters add their own options on top (`maxSummaryTokens`,
 `minReductionRatio`, `FAST_JEV_*` overrides); their READMEs are the reference.
 
+## Measurement
+
+The Claude Code hook logs one measurement line per compaction — whether it
+replaced the history or fell back:
+
+```
+fast-jev-compaction:measure {"at":"…","trigger":"manual","outcome":"replaced",…}
+```
+
+The JSON carries the message and character counts before and after, estimated
+`tokensBefore` / `tokensAfter` (the library's own estimator over the rendered
+transcript, so before and after share one basis), the `reduction`, the state size and request
+count, the elapsed `ms`, and the context window's real `contextTokens` /
+`contextPercent` when `$.session.usage()` reports them; a fallback line adds
+`fallbackReason`. This is the evidence behind the token and cost claims.
+
+Set `metricsPath` (or export `FAST_JEV_METRICS`, read from the engine
+environment) to also append the same JSON as one line to that file. The write
+is best-effort: a missing file is created, and a failure is logged in one line
+rather than allowed to break the compaction. `measureNativeSummary` is off by
+default because, when on, a replaced compaction also runs the built-in
+summarizer once to record its `nativeSummaryMessages` / `nativeSummaryTokens`
+— a whole extra summarizer call — so turn it on to see kept-against-summary
+rather than for routine use.
+
 ## Verifying it works
 
 Every harness falls back to its own summarizer when Jev fails — no key, the
 wrong endpoint, a transcript too short to shrink, or a decision that would
-delete every candidate — so a broken setup looks
-exactly like a working one. Each adapter names itself when it does act:
+delete every candidate (every adapter applies those prunes by default) — so a
+broken setup can look exactly like a working one. Each adapter names itself
+when it does act:
 
 | Harness | Where the evidence lands |
 | --- | --- |

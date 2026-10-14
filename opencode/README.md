@@ -62,10 +62,10 @@ README, "Providers").
 The plugin leaves `event.result` unset, which runs OpenCode's built-in
 summarizer, when:
 
-- Jev judged at least one tool call and dropped every one of them: the largest
-  reduction available is also the one that leaves the narration with no evidence
-  behind it, so it is treated as no answer at all. `requireKeepSignal: false`
-  applies the prune anyway;
+- Jev judged at least one tool call and dropped every one of them while
+  `requireKeepSignal` is on (off by default, so those prunes are applied): the
+  largest reduction available is also the one that leaves the narration with no
+  evidence behind it;
 - the reduction is below `minReductionRatio` (short sessions, or a transcript
   with little to drop);
 - the rendered summary exceeds `maxSummaryTokens` (it is a full transcript
@@ -87,7 +87,7 @@ log; there is no notification API on the plugin context.
 | `baseUrl` | provider endpoint | System One endpoint override; `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read when it is unset |
 | `model` | `jev-latest` | Jev model name |
 | `minReductionRatio` | `0.25` | Minimum shrink of the rendered transcript |
-| `requireKeepSignal` | `true` | Fall back when Jev drops every call it judged, rather than apply the largest possible reduction |
+| `requireKeepSignal` | `false` | Fall back when Jev drops every call it judged, rather than apply the largest possible reduction |
 | `maxSummaryTokens` | `16384` | Estimated token ceiling for the summary |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
 | `keepThreshold` | `0.5` | Minimum keep probability for a call or result to stay |
