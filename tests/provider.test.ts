@@ -67,7 +67,7 @@ describe('resolveJevProvider', () => {
 
   it('infers OpenCode only from a lone OPENCODE_API_KEY or an opencode baseUrl', () => {
     expect(resolveJevProvider({}, { OPENCODE_API_KEY: 'oc' })).toBe('opencode');
-    expect(resolveJevProvider({ baseUrl: 'https://opencode.ai/inference/v1/systemone' })).toBe('opencode');
+    expect(resolveJevProvider({ baseUrl: 'https://opencode.ai/inference/systemone/v1/systemone' })).toBe('opencode');
     // an explicit provider or any other key keeps TypeSafe / OpenRouter
     expect(resolveJevProvider({}, { OPENCODE_API_KEY: 'oc', TYPESAFE_API_KEY: 't' })).toBe('typesafe');
     expect(resolveJevProvider({}, { OPENCODE_API_KEY: 'oc', OPENROUTER_API_KEY: 'o' })).toBe('openrouter');
@@ -141,7 +141,7 @@ describe('endpoint from the environment', () => {
     ).toBe(OPENROUTER_SYSTEM_ONE_URL);
     expect(
       resolveJevEndpoint({ provider: 'opencode' }, { TYPESAFE_BASE_URL: 'https://engine.local' }).url,
-    ).toBe('https://opencode.ai/inference/v1/systemone');
+    ).toBe('https://opencode.ai/inference/systemone/v1/systemone');
   });
 });
 
@@ -170,9 +170,14 @@ describe('provider helpers', () => {
         model: 'jev-latest',
       },
       opencode: {
-        url: 'https://opencode.ai/inference/v1/systemone',
+        url: 'https://opencode.ai/inference/systemone/v1/systemone',
         envKey: 'OPENCODE_API_KEY',
         model: 'jev-1.13',
+      },
+      zen: {
+        url: 'https://opencode.ai/zen/v1/systemone',
+        envKey: 'OPENCODE_API_KEY',
+        model: 'jev-1.13-free',
       },
     });
     // The two exported maps are views over the record, so they cannot drift.
@@ -188,11 +193,13 @@ describe('provider helpers', () => {
       typesafe: 'TYPESAFE_API_KEY',
       openrouter: 'OPENROUTER_API_KEY',
       opencode: 'OPENCODE_API_KEY',
+      zen: 'OPENCODE_API_KEY',
     });
     expect(PROVIDER_URLS).toEqual({
       typesafe: SYSTEM_ONE_URL,
       openrouter: OPENROUTER_SYSTEM_ONE_URL,
-      opencode: 'https://opencode.ai/inference/v1/systemone',
+      opencode: 'https://opencode.ai/inference/systemone/v1/systemone',
+      zen: 'https://opencode.ai/zen/v1/systemone',
     });
     expect(missingApiKeyError('typesafe').message).toMatch(/TYPESAFE_API_KEY/);
     expect(missingApiKeyError('openrouter').message).toMatch(/OPENROUTER_API_KEY/);
@@ -264,7 +271,7 @@ describe('JevClient provider resolution', () => {
     });
     expect(client.resolvedProvider).toBe('opencode');
     await client.ask(state, questions);
-    expect(calls[0]?.url).toBe('https://opencode.ai/inference/v1/systemone');
+    expect(calls[0]?.url).toBe('https://opencode.ai/inference/systemone/v1/systemone');
     expect(calls[0]?.auth).toBe('Bearer oc');
   });
 

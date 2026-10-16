@@ -2,10 +2,14 @@ import type { JevAnswer, JevQuestions, JevResponse, JevState } from './types.js'
 
 export const SYSTEM_ONE_URL = 'https://api.typesafe.ai/v1/systemone';
 export const OPENROUTER_SYSTEM_ONE_URL = 'https://openrouter.ai/api/v1/systemone';
-export const OPENCODE_SYSTEM_ONE_URL = 'https://opencode.ai/inference/v1/systemone';
+export const OPENCODE_SYSTEM_ONE_URL = 'https://opencode.ai/inference/systemone/v1/systemone';
 export const DEFAULT_MODEL = 'jev-latest';
 /** The model OpenCode Console serves when none is named; `jev-1.13` costs $0.042/M input. */
 export const OPENCODE_DEFAULT_MODEL = 'jev-1.13';
+/** OpenCode Zen serves the same System One API; its free Jev needs no key. */
+export const OPENCODE_ZEN_URL = 'https://opencode.ai/zen/v1/systemone';
+export const OPENCODE_ZEN_FREE_MODEL = 'jev-1.13-free';
+export const OPENCODE_ZEN_MODEL = 'jev-1.13';
 
 /**
  * Forces the provider when the keys alone are ambiguous: a host that keeps
@@ -14,8 +18,8 @@ export const OPENCODE_DEFAULT_MODEL = 'jev-1.13';
  */
 export const PROVIDER_OVERRIDE_ENV_KEY = 'FAST_JEV_PROVIDER';
 
-/** Where Jev is served: TypeSafe directly, OpenRouter's System One route, or OpenCode Console's. */
-export type JevProvider = 'typesafe' | 'openrouter' | 'opencode';
+/** Where Jev is served: TypeSafe directly, OpenRouter's System One route, OpenCode Console's, or OpenCode Zen's free one. */
+export type JevProvider = 'typesafe' | 'openrouter' | 'opencode' | 'zen';
 
 /** Everything that differs per provider: its endpoint, its key variable, and its default model. */
 export interface ProviderFacts {
@@ -37,6 +41,7 @@ export const PROVIDERS: Record<JevProvider, ProviderFacts> = {
   typesafe: { url: SYSTEM_ONE_URL, envKey: 'TYPESAFE_API_KEY', model: DEFAULT_MODEL },
   openrouter: { url: OPENROUTER_SYSTEM_ONE_URL, envKey: 'OPENROUTER_API_KEY', model: DEFAULT_MODEL },
   opencode: { url: OPENCODE_SYSTEM_ONE_URL, envKey: 'OPENCODE_API_KEY', model: OPENCODE_DEFAULT_MODEL },
+  zen: { url: OPENCODE_ZEN_URL, envKey: 'OPENCODE_API_KEY', model: OPENCODE_ZEN_FREE_MODEL },
 };
 
 /** Projects one fact of `PROVIDERS` across every provider. */
@@ -59,7 +64,7 @@ export const OPENROUTER_KEY_PREFIX = 'sk-or-';
 
 /** Whether a value names a provider; anything else is ignored. */
 export function isJevProvider(value: unknown): value is JevProvider {
-  return value === 'typesafe' || value === 'openrouter' || value === 'opencode';
+  return value === 'typesafe' || value === 'openrouter' || value === 'opencode' || value === 'zen';
 }
 
 /**
@@ -102,6 +107,7 @@ export function resolveJevProvider(
   if (isJevProvider(override)) return override;
   if (options.baseUrl) {
     if (/openrouter\.ai/i.test(options.baseUrl)) return 'openrouter';
+    if (/opencode\.ai\/zen/i.test(options.baseUrl)) return 'zen';
     if (/opencode\.ai/i.test(options.baseUrl)) return 'opencode';
     return 'typesafe';
   }
@@ -187,7 +193,8 @@ export interface JevRequest {
 /**
  * The HTTP request for one Jev call, for any fetch-like transport. The caller
  * resolves the provider itself (`resolveJevProvider`), so no environment is
- * consulted here: without a `provider` the request goes to TypeSafe.
+ * consulted here: without a `provider` the request goes to TypeSafe. An empty
+ * `apiKey` sends no `authorization` header (OpenCode Zen's free Jev).
  */
 export function buildJevRequest(
   params: {
@@ -203,7 +210,7 @@ export function buildJevRequest(
     url: params.baseUrl ?? PROVIDERS[params.provider ?? 'typesafe'].url,
     method: 'POST',
     headers: {
-      authorization: `Bearer ${params.apiKey}`,
+      ...(params.apiKey ? { authorization: `Bearer ${params.apiKey}` } : {}),
       'content-type': 'application/json',
     },
     body: JSON.stringify({

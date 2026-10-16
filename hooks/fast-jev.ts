@@ -18,6 +18,8 @@ import {
   environmentEndpoint,
   isJevProvider,
   missingApiKeyError,
+  OPENCODE_ZEN_FREE_MODEL,
+  OPENCODE_ZEN_URL,
   parseJevResponse,
   PROVIDER_OVERRIDE_ENV_KEY,
   PROVIDERS,
@@ -212,6 +214,27 @@ export type SessionCompaction = {
   messages: SessionMessage[];
 };
 
+/**
+ * Without a key, the same config pointed at OpenCode Zen's free Jev, which
+ * needs none (the model too, unless one was chosen explicitly). A supplied
+ * key and a `baseUrl` override always win.
+ */
+export function withProvider(config: HookConfig, apiKey: string | undefined): HookConfig {
+  if (apiKey) return { ...config, apiKey };
+  if (config.baseUrl) return config;
+  return {
+    ...config,
+    provider: 'zen',
+    baseUrl: OPENCODE_ZEN_URL,
+    model: config.model ?? OPENCODE_ZEN_FREE_MODEL,
+  };
+}
+
+/** Where Jev is reached, for the log. */
+export function describeProvider(config: HookConfig): string {
+  return `${config.model ?? defaultModelFor(config.provider ?? 'typesafe')} at ${config.baseUrl ?? 'TypeSafe'} (${config.apiKey ? 'with key' : 'no key'})`;
+}
+
 /** Runs the library over a session transcript; throws when the key is missing or Jev fails. */
 export async function compactSession(
   messages: readonly SessionMessage[],
@@ -225,10 +248,14 @@ export async function compactSession(
   // A model swap has to carry its own context budget: the ceilings differ by
   // two orders of magnitude across the decision models.
   const options = applyRequestBudget({ ...config, model });
-  if (!options.apiKey) throw missingApiKeyError(provider);
+  // OpenCode Zen's free Jev needs no key; every other provider does, unless an
+  // endpoint override points at a proxy that adds its own.
+  if (!options.apiKey && provider !== 'zen' && !options.baseUrl) {
+    throw missingApiKeyError(provider);
+  }
   const result = await compact(
     messages,
-    jevAsker(fetchFn, options.apiKey, model, { provider, baseUrl: options.baseUrl }),
+    jevAsker(fetchFn, options.apiKey ?? '', model, { provider, baseUrl: options.baseUrl }),
     options,
   );
   return { result, messages: toSessionMessages(messages, result.messages) };

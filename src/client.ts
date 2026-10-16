@@ -52,7 +52,12 @@ export class JevClient implements JevAsker {
   }
 
   async ask(state: JevState, questions: JevQuestions): Promise<JevResponse> {
-    if (!this.apiKey) throw missingApiKeyError(this.provider);
+    // A key is required for the keyed providers when no endpoint override is
+    // set; OpenCode Zen's free Jev needs none, and an override may point at a
+    // proxy that adds its own.
+    if (!this.apiKey && this.provider !== 'zen' && !this.baseUrl) {
+      throw missingApiKeyError(this.provider);
+    }
     const request = buildJevRequest(
       {
         apiKey: this.apiKey,

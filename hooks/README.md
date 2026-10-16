@@ -29,9 +29,9 @@ hooks surface before installing or loading it:
 
 ```sh
 export CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1
-export TYPESAFE_API_KEY="<your TypeSafe key>"
+export TYPESAFE_API_KEY="<your TypeSafe key>"   # optional; without it Jev is reached at OpenCode Zen
 
-claude plugin marketplace add tamaratran/fast-jev-compaction
+claude plugin marketplace add kevinb6e/fast-jev-compaction
 claude plugin install fast-jev-compaction@fast-jev-compaction
 ```
 
@@ -62,11 +62,13 @@ The plugin declares these `userConfig` values in
 
 The key can be supplied as the sensitive `apiKey` plugin option or through
 `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY`, and
-`FAST_JEV_PROVIDER` names the provider (`typesafe`, `openrouter` or `opencode`)
-when the keys alone are ambiguous; it beats `baseUrl` and the key inference, and
-an unknown name is ignored. The environment variable is the recommended
-development setup. Each variable is read from the process environment first,
-then from the `env` block of the Claude Code settings.
+`FAST_JEV_PROVIDER` names the provider (`typesafe`, `openrouter`, `opencode` or
+`zen`) when the keys alone are ambiguous; it beats `baseUrl` and the key
+inference, and an unknown name is ignored. Without a key at all the hook reaches
+Jev at OpenCode Zen's free endpoint (`jev-1.13-free`, no `authorization`
+header) and logs which endpoint it picked. The environment variable is the
+recommended development setup. Each variable is read from the process
+environment first, then from the `env` block of the Claude Code settings.
 
 The provider — and with it the endpoint — is resolved by `src/request.ts`: an
 explicit `provider` plugin option, then `FAST_JEV_PROVIDER`, then a `baseUrl`

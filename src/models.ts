@@ -22,6 +22,8 @@ export const DECISION_MODEL_CEILINGS: Readonly<Record<string, number>> = {
   // measured the same as jev-1.13
   'jev-latest': 30_000,
   'jev-1.13': 30_000,
+  // OpenCode Zen's free tier serves the same model
+  'jev-1.13-free': 30_000,
   'openai/gpt-6-luna-decisions': 524_288,
   // accepts far more (524 288 measured) but the gateway times out first: 150k
   // tokens answered in 21s, ~300k returned 504 after 55s

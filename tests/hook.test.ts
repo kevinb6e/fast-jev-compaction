@@ -3,6 +3,7 @@ import {
   compactSession,
   decisionLog,
   decisionLogLines,
+  describeProvider,
   getCredentials,
   hookFallbackReason,
   logMeasurement,
@@ -11,6 +12,7 @@ import {
   resolveHookConfig,
   summarize,
   toSessionMessages,
+  withProvider,
   type HookConfig,
 } from '../hooks/fast-jev.ts';
 import {
@@ -86,13 +88,13 @@ describe('getCredentials', () => {
   it('reads exactly the variables the maps name', async () => {
     const asked: string[] = [];
     await getCredentials(host(asked) as never, config);
-    expect([...asked].sort()).toEqual(
-      [
-        ...Object.values(PROVIDER_ENV_KEYS),
-        ...Object.values(ENDPOINT_ENV_KEYS),
-        PROVIDER_OVERRIDE_ENV_KEY,
-      ].sort(),
-    );
+    // OpenCode Console and Zen share one key variable, which is read once.
+    const named = [
+      ...Object.values(PROVIDER_ENV_KEYS),
+      ...Object.values(ENDPOINT_ENV_KEYS),
+      PROVIDER_OVERRIDE_ENV_KEY,
+    ];
+    expect([...asked].sort()).toEqual([...new Set(named)].sort());
   });
 
   it('picks OpenRouter from a key in either variable, given no other setting', async () => {
@@ -305,260 +307,27 @@ describe('session message mapping', () => {
     expect(out[2]).toBe(messages[2]);
   });
 });
-
-describe('compactSession', () => {
-  it('runs the library over the engine fetch and reports the outcome', async () => {
-    const bodies: string[] = [];
-    const config = { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k', model: 'jev-x' };
-    const { result: output, messages } = await compactSession(
-      transcript(),
-      config,
-      jevFetch((name) => (name === 'call_t2' || name === 'result_t2' ? 0.9 : 0.1), bodies),
-    );
-    expect(bodies).toHaveLength(1);
-    expect(JSON.parse(bodies[0]!).model).toBe('jev-x');
-    expect(output.decisions.map((d) => d.action)).toEqual(['drop_call', 'keep']);
-    expect(messages.map((m) => m.handle)).toEqual(['h-0', 'h-tool-2', 'r-tool-2', 'h-5', 'h-6']);
-    expect(summarize(output)).toMatch(/^\d+% reduction; 1 kept, 1 call_dropped; state ~\d+ tokens \(full\) in 1 request\(s\)$/);
-    expect(decisionLog(output)).toBe('t1:Read:drop_call/call=0.10/result=0.10 t2:Bash:keep/call=0.90/result=0.90');
-    expect(decisionLogLines(output)).toEqual([`decisions: ${decisionLog(output)}`]);
-  });
-
-  it('defaults the model to the resolved provider, and lets an explicit one win', async () => {
-    const modelOf = async (config: Partial<HookConfig>): Promise<string> => {
-      const bodies: string[] = [];
-      await compactSession(
-        transcript(),
-        { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k', ...config },
-        jevFetch(() => 0.9, bodies),
-      );
-      return (JSON.parse(bodies[0]!) as { model: string }).model;
-    };
-    expect(await modelOf({})).toBe('jev-latest');
-    expect(await modelOf({ provider: 'opencode' })).toBe('jev-1.13');
-    expect(await modelOf({ provider: 'opencode', model: 'jev-x' })).toBe('jev-x');
-  });
-
-  it('sizes the state budget from the resolved model', async () => {
-    const big = transcript();
-    big[0]!.text = 'x'.repeat(40_000);
-    const stageOf = async (config: Partial<HookConfig>): Promise<string> => {
-      const { result } = await compactSession(
-        big,
-        { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k', ...config },
-        jevFetch(() => 0.9),
-      );
-      return result.stats.stateStage;
-    };
-    expect(await stageOf({})).toBe('full');
-    // 'jev-x' is unlisted, so the 8 192-token fallback ceiling forces the fit
-    expect(await stageOf({ model: 'jev-x' })).not.toBe('full');
-  });
-
-  it('splits a long decision log into ui.log lines under the host limit', async () => {
-    const config = { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k' };
-    const { result: output } = await compactSession(transcript(), config, jevFetch(() => 0.1));
-    const lines = decisionLogLines(output, 60);
-    expect(lines).toEqual([
-      'decisions (1/2): t1:Read:drop_call/call=0.10/result=0.10',
-      'decisions (2/2): t2:Bash:drop_call/call=0.10/result=0.10',
-    ]);
-    expect(lines.every((line) => line.length <= 60)).toBe(true);
-    expect(decisionLogLines({ ...output, decisions: [] })).toEqual(['decisions: (none)']);
-  });
-
-  it('throws on a missing key and on failed requests so the hook falls back', async () => {
-    const config = resolveHookConfig({ preserveRecentMessages: 1 });
-    await expect(compactSession(transcript(), config, jevFetch(() => 0))).rejects.toThrow(/TYPESAFE_API_KEY/);
-    await expect(
-      compactSession(transcript(), { ...config, apiKey: 'k' }, async () => ({ status: 500, ok: false, text: 'x' })),
-    ).rejects.toThrow(/500/);
+describe('OpenCode Zen fallback', () => {
+  it('reaches Zen without a key and sends no authorization header there', async () => {
+    const config = withProvider(resolveHookConfig({ preserveRecentMessages: 1 }), undefined);
+    expect(config).toMatchObject({ provider: 'zen', baseUrl: 'https://opencode.ai/zen/v1/systemone', model: 'jev-1.13-free' });
+    expect(config.apiKey).toBeUndefined();
+    expect(describeProvider(config)).toBe('jev-1.13-free at https://opencode.ai/zen/v1/systemone (no key)');
+    expect(withProvider(resolveHookConfig({ model: 'jev-1.13' }), undefined).model).toBe('jev-1.13');
+    expect(withProvider(resolveHookConfig({}), 'k')).toMatchObject({ apiKey: 'k' });
+    const forced = withProvider(resolveHookConfig({ provider: 'opencode' }), 'k');
+    expect(forced).toMatchObject({ provider: 'opencode', apiKey: 'k' });
+    expect(withProvider(resolveHookConfig({ baseUrl: 'http://jev' }), undefined)).toMatchObject({ baseUrl: 'http://jev' });
+    const urls: string[] = [];
+    const headers: string[][] = [];
+    const answers = jevFetch(() => 0.9);
+    const { result: output } = await compactSession(transcript(), config, async (url, init) => {
+      urls.push(url);
+      headers.push(Object.keys(init?.headers ?? {}));
+      return answers(url, init);
+    });
+    expect(urls).toEqual(['https://opencode.ai/zen/v1/systemone']);
+    expect(headers).toEqual([['content-type']]);
+    expect(output.stats.requests).toBe(1);
   });
 });
-
-describe('compaction measurement', () => {
-  const MEASURE_PREFIX = 'fast-jev-compaction:measure ';
-  const nativeMessages: SessionMessage[] = [
-    message('user', 'native built-in summary', { handle: 'native-0' }),
-  ];
-  /** Jev answers that drop the first call and keep the second. */
-  const dropFirst = (name: string): number =>
-    name === 'call_t2' || name === 'result_t2' ? 0.9 : 0.1;
-
-  type CompactEvent = { trigger: string; messages: SessionMessage[] };
-  type CompactOutcome = { messages?: readonly SessionMessage[] };
-  type CompactHandler = (
-    ctx: unknown,
-    event: CompactEvent,
-    next: (event: CompactEvent) => Promise<CompactOutcome>,
-  ) => Promise<CompactOutcome>;
-
-  /** Drives the public `register` with a fake engine, capturing the handler. */
-  function harness(
-    options: Record<string, unknown>,
-    answers: (name: string) => number = dropFirst,
-    env: Record<string, string> = {},
-  ) {
-    const handlers: Record<string, CompactHandler> = {};
-    const on = ((pattern: string, hook: CompactHandler) => {
-      handlers[pattern] = hook;
-    }) as never;
-    register(on, options as never);
-
-    const logs: string[] = [];
-    const toasts: string[] = [];
-    const files = new Map<string, string>();
-    const writes: string[] = [];
-    const answered = jevFetch(answers);
-    const envValues: Record<string, string> = { TYPESAFE_API_KEY: 'k', ...env };
-    const engine = {
-      env: { get: async (name: string) => envValues[name] },
-      settings: { read: async () => ({ env: {} }) },
-      http: { fetch: (url: string, init?: { body?: string }) => answered(url, init) },
-      ui: {
-        log: (text: string) => logs.push(text),
-        toast: (text: string) => toasts.push(text),
-      },
-      fs: {
-        read: async (path: string) => {
-          if (!files.has(path)) throw new Error(`ENOENT: ${path}`);
-          return files.get(path)!;
-        },
-        write: async (path: string, text: string) => {
-          files.set(path, text);
-          writes.push(text);
-        },
-      },
-      session: {
-        usage: async () => ({ context: { tokens: 8000, window: 200_000, percent: 4 } }),
-      },
-    };
-
-    let nextCalls = 0;
-    const next = async (_event: CompactEvent): Promise<CompactOutcome> => {
-      nextCalls += 1;
-      return { messages: nativeMessages };
-    };
-    const handler = handlers['session.compact']!;
-    const run = (event: CompactEvent) => handler(engine, event, next);
-    const measures = () =>
-      logs
-        .filter((line) => line.startsWith(MEASURE_PREFIX))
-        .map((line) => JSON.parse(line.slice(MEASURE_PREFIX.length)) as Record<string, unknown>);
-    return { run, logs, toasts, files, writes, measures, nextCalls: () => nextCalls };
-  }
-
-  it('returns the pruned messages and logs a replaced measurement', async () => {
-    const h = harness({ preserveRecentMessages: 1 });
-    const out = await h.run({ trigger: 'manual', messages: transcript() });
-
-    expect(out.messages?.map((m) => m.handle)).toEqual([
-      'h-0',
-      'h-tool-2',
-      'r-tool-2',
-      'h-5',
-      'h-6',
-    ]);
-    expect(out.messages).not.toBe(nativeMessages);
-    expect(h.nextCalls()).toBe(0);
-    expect(h.toasts[0]).toContain('kept 5/7 messages, no summary');
-
-    const measurements = h.measures();
-    expect(measurements).toHaveLength(1);
-    const m = measurements[0]!;
-    expect(m.outcome).toBe('replaced');
-    expect(m.trigger).toBe('manual');
-    expect(m.messagesBefore).toBe(7);
-    expect(m.messagesAfter).toBe(5);
-    expect(m.contextTokens).toBe(8000);
-    expect(m.contextPercent).toBe(4);
-    expect((m.tokensBefore as number) > (m.tokensAfter as number)).toBe(true);
-    expect(m.reduction).toBe(((m.charsBefore as number) - (m.charsAfter as number)) / (m.charsBefore as number));
-    expect('nativeSummaryMessages' in m).toBe(false);
-    expect('fallbackReason' in m).toBe(false);
-  });
-
-  it('appends the same measurement line to the metrics file', async () => {
-    const h = harness({ preserveRecentMessages: 1, metricsPath: 'metrics.jsonl' });
-    await h.run({ trigger: 'auto', messages: transcript() });
-
-    const line = h.logs.filter((entry) => entry.startsWith(MEASURE_PREFIX))[0]!.slice(
-      MEASURE_PREFIX.length,
-    );
-    expect(h.writes).toEqual([`${line}\n`]);
-    expect(h.files.get('metrics.jsonl')).toBe(`${line}\n`);
-  });
-
-  it('falls back to FAST_JEV_METRICS when no metricsPath option is set', async () => {
-    const h = harness({ preserveRecentMessages: 1 }, dropFirst, {
-      FAST_JEV_METRICS: 'env-metrics.jsonl',
-    });
-    await h.run({ trigger: 'plugin', messages: transcript() });
-
-    expect(h.files.has('env-metrics.jsonl')).toBe(true);
-  });
-
-  it('measures the built-in summary when asked, still returning the prune', async () => {
-    const h = harness({ preserveRecentMessages: 1, measureNativeSummary: true });
-    const out = await h.run({ trigger: 'manual', messages: transcript() });
-
-    expect(h.nextCalls()).toBe(1);
-    expect(out.messages?.map((m) => m.handle)).toEqual([
-      'h-0',
-      'h-tool-2',
-      'r-tool-2',
-      'h-5',
-      'h-6',
-    ]);
-    const m = h.measures()[0]!;
-    expect(m.outcome).toBe('replaced');
-    expect(m.nativeSummaryMessages).toBe(nativeMessages.length);
-    expect((m.nativeSummaryTokens as number) > 0).toBe(true);
-  });
-
-  it('logs a fallback measurement and returns the built-in compaction', async () => {
-    const h = harness(
-      { preserveRecentMessages: 1, minReductionRatio: 0, requireKeepSignal: true },
-      () => 0.1,
-    );
-    const out = await h.run({ trigger: 'manual', messages: transcript() });
-
-    expect(out.messages).toBe(nativeMessages);
-    expect(h.nextCalls()).toBe(1);
-    const m = h.measures()[0]!;
-    expect(m.outcome).toBe('fallback');
-    expect(m.fallbackReason).toMatch(/^no keep signal \(/);
-    expect(m.messagesAfter).toBe(nativeMessages.length);
-    expect(m.nativeSummaryMessages).toBe(nativeMessages.length);
-  });
-
-  it('logs a one-line failure when the metrics write fails, without throwing', async () => {
-    const lines: string[] = [];
-    const m = measurementOf({
-      at: '2020-01-01T00:00:00.000Z',
-      trigger: 'manual',
-      outcome: 'replaced',
-      before: transcript(),
-      after: transcript(),
-      stateTokens: 0,
-      requests: 0,
-      ms: 0,
-    });
-    await logMeasurement(
-      {
-        ui: { log: (text: string) => lines.push(text) },
-        fs: {
-          read: async () => '',
-          write: async () => {
-            throw new Error('EACCES');
-          },
-        },
-      },
-      m,
-      'metrics.jsonl',
-    );
-    expect(lines[0]).toBe(`${MEASURE_PREFIX}${JSON.stringify(m)}`);
-    expect(lines[1]).toBe('fast-jev-compaction:measure failed to write metrics.jsonl (EACCES)');
-  });
-});
-

@@ -5,6 +5,11 @@ result is scored in one fast request; stale ones are dropped or truncated and
 everything kept stays verbatim. One scoring core (`src/`) drives adapters for
 several harnesses, and is usable on its own as an npm library.
 
+No API key is needed: without a TypeSafe key, the Claude Code hook and the
+OpenCode plugin reach Jev at [OpenCode Zen](https://opencode.ai/docs/zen),
+whose `jev-1.13-free` model is free and unauthenticated. Set `TYPESAFE_API_KEY`
+to use TypeSafe's own endpoint instead.
+
 ## What and why
 
 Most context compaction asks an LLM to summarize old turns. A summary is
@@ -78,14 +83,29 @@ just the repo's `.claude-plugin/marketplace.json`.
 
 ### OpenCode
 
-`opencode/index.ts` hooks `compaction`, renders Jev's pruned transcript to text
-and returns it as `event.result`, skipping OpenCode's model call. The previous
-summary is carried forward (read from a `compaction` part in the transcript or
-from the session context), and the hook leaves `event.result` unset — which runs
-OpenCode's built-in summarizer — when Jev cannot shrink the transcript enough,
-the summary would exceed `maxSummaryTokens`, the previous checkpoint is
-unreadable, or Jev fails. It reads its options from `opencode.json(c)` and the
-`FAST_JEV_*` environment variables; see [`opencode/README.md`](opencode/README.md).
+`opencode/server.js` (bundled from `src/opencode/`) is an OpenCode plugin for
+both plugin APIs: OpenCode 1 (`@opencode-ai/plugin` hooks) and OpenCode 2
+(`@opencode/plugin` `setup(ctx)`); each host reads the one it knows. Neither
+OpenCode line has a hook that hands back the messages a compaction should
+produce, so the plugin prunes continuously instead: before every model request
+it asks Jev about stale tool calls, remembers the decisions per session and
+applies them to that request and every later one. OpenCode 2 additionally
+supplies a verbatim checkpoint from its `compaction` hook whenever the pruned
+history fits `checkpointTokens`, so `/compact` is instant and no summary is
+written.
+
+Install needs only `git` — the entry `opencode/server.js` is committed, so no
+build runs:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kevinb6e/fast-jev-compaction/main/install.sh | sh
+```
+
+On OpenCode 2 (with `opencode` on PATH) that runs `opencode plugin add` for
+you; on OpenCode 1 it clones into `~/.local/share/fast-jev-compaction` and
+writes one file into `~/.config/opencode/plugins/`, which either version loads
+on the next start (`opencode service restart` for the background server). See
+[`opencode/README.md`](opencode/README.md) for configuration.
 
 ### omp
 
@@ -157,15 +177,17 @@ fitted throw; the caller (or the harness adapter) decides what to fall back to.
 
 ## Providers
 
-Jev is served by TypeSafe, and also hosted on OpenRouter and OpenCode Console
-on the same System One API surface, so the three are a drop-in base-URL change:
+Jev is served by TypeSafe, and also hosted on OpenRouter, OpenCode Console and
+OpenCode Zen on the same System One API surface, so the four are a drop-in
+base-URL change. OpenCode Zen's `jev-1.13-free` model is free and needs no key
+at all:
 
 ```sh
 export TYPESAFE_API_KEY=...      # TypeSafe directly
 export OPENROUTER_API_KEY=...    # OpenRouter
-export OPENCODE_API_KEY=...      # OpenCode Console (Jev 1.13)
+export OPENCODE_API_KEY=...      # OpenCode Console (Jev 1.13) or Zen (free Jev)
 # or force one when the environment is ambiguous
-export FAST_JEV_PROVIDER=opencode
+export FAST_JEV_PROVIDER=typesafe|openrouter|opencode|zen
 ```
 
 ### Environment variables per provider
@@ -178,7 +200,8 @@ every provider.
 | --- | --- | --- | --- | --- |
 | TypeSafe | `TYPESAFE_API_KEY` | `TYPESAFE_BASE_URL` (host form) or `JEV_BASE_URL` | `jev-latest` | `https://api.typesafe.ai/v1/systemone` |
 | OpenRouter | `OPENROUTER_API_KEY` | `JEV_BASE_URL` (`TYPESAFE_BASE_URL` is ignored) | `jev-latest` | `https://openrouter.ai/api/v1/systemone` |
-| OpenCode Console | `OPENCODE_API_KEY` | `JEV_BASE_URL` (`TYPESAFE_BASE_URL` is ignored) | `jev-1.13` | `https://opencode.ai/inference/v1/systemone` |
+| OpenCode Console | `OPENCODE_API_KEY` | `JEV_BASE_URL` (`TYPESAFE_BASE_URL` is ignored) | `jev-1.13` | `https://opencode.ai/inference/systemone/v1/systemone` |
+| OpenCode Zen | `OPENCODE_API_KEY` (optional) | `JEV_BASE_URL` (`TYPESAFE_BASE_URL` is ignored) | `jev-1.13-free` | `https://opencode.ai/zen/v1/systemone` |
 
 `TYPESAFE_BASE_URL` is the host form TypeSafe's own SDKs take, so
 `/v1/systemone` is appended unless it is already there; it is ignored when the
@@ -191,23 +214,24 @@ overrides the default model (see [Choosing a decision model](#choosing-a-decisio
 **Provider** — the first rule that matches decides, in this order:
 
 1. an explicit `provider` option;
-2. `FAST_JEV_PROVIDER`, when it names `typesafe`, `openrouter` or `opencode`
-   (the hook reads it from the engine environment, then its settings `env`
+2. `FAST_JEV_PROVIDER`, when it names `typesafe`, `openrouter`, `opencode` or
+   `zen` (the hook reads it from the engine environment, then its settings `env`
    block; the omp and OpenCode adapters and the library read it from the
    process environment);
-3. a `baseUrl` containing `openrouter.ai` or `opencode.ai`;
+3. a `baseUrl` containing `openrouter.ai`, or `opencode.ai/zen` (Zen), or
+   `opencode.ai` (Console);
 4. an OpenRouter-shaped key (`sk-or-`) in **either** key variable;
 5. a lone `OPENROUTER_API_KEY`;
-6. a lone `OPENCODE_API_KEY`;
-7. a set `TYPESAFE_API_KEY`;
-8. otherwise TypeSafe.
+6. a set `TYPESAFE_API_KEY`;
+7. otherwise OpenCode Zen, whose free Jev needs no key.
 
-So `TYPESAFE_API_KEY` outranks a set `OPENROUTER_API_KEY` (rule 7 beats rule 5)
-unless that key is `sk-or-`-shaped, and it outranks `OPENCODE_API_KEY` outright
-(an OpenCode Console key must be the only key in the environment). Rule 4 reads
-the key's own shape because a key keeps it wherever it is exported — a common
-setup exports an OpenRouter key as `TYPESAFE_API_KEY`, and without that rule
-TypeSafe would be chosen and the request would 401.
+So `TYPESAFE_API_KEY` outranks a set `OPENROUTER_API_KEY` (rule 6 beats rule 5)
+unless that key is `sk-or-`-shaped. Rule 4 reads the key's own shape because a
+key keeps it wherever it is exported — a common setup exports an OpenRouter key
+as `TYPESAFE_API_KEY`, and without that rule TypeSafe would be chosen and the
+request would 401. With no key at all, every host falls back to Zen: the Claude
+Code hook and the OpenCode plugin switch to `jev-1.13-free` and log it, and the
+library's `JevClient` sends no `authorization` header.
 
 **API key** — an explicit `apiKey` option, then `FAST_JEV_API_KEY` (omp and
 OpenCode), then the resolved provider's own variable.
@@ -219,8 +243,8 @@ URL.
 **Model** — an explicit `model` option (or `FAST_JEV_MODEL` in omp and
 OpenCode), then the resolved provider's default.
 
-The model IDs are `jev-latest`, `jev-1.13` and, on OpenRouter,
-`typesafe/jev-1.13` (use `jev-1.13-free` for the free OpenCode model).
+The model IDs are `jev-latest`, `jev-1.13`, `jev-1.13-free` (Zen's free model)
+and, on OpenRouter, `typesafe/jev-1.13`.
 
 **The transcript goes wherever the resolved endpoint points**, so a variable
 exported for another tool sends it there; every host names the endpoint host in
@@ -278,13 +302,18 @@ export TYPESAFE_API_KEY=...
 ```
 
 To call Jev through another host, expose that host's key and name the provider
-with `FAST_JEV_PROVIDER` (`typesafe`, `openrouter` or `opencode`) — the endpoint
-and the default model then follow from it:
+with `FAST_JEV_PROVIDER` (`typesafe`, `openrouter`, `opencode` or `zen`) — the
+endpoint and the default model then follow from it:
 
 ```sh
 export OPENROUTER_API_KEY=...      # or OPENCODE_API_KEY / TYPESAFE_API_KEY
 export FAST_JEV_PROVIDER=openrouter
 ```
+
+Without any key, the hook and the OpenCode plugin use Zen's free Jev. To use
+Zen from the library, pass `{ apiKey: '', baseUrl: OPENCODE_ZEN_URL, model:
+OPENCODE_ZEN_FREE_MODEL }` (both constants are exported); a key is only required
+for the keyed providers, and an empty key sends no `authorization` header.
 
 ```ts
 import { compactMessages, reductionRatio, type Message } from 'fast-jev-compaction';
@@ -309,7 +338,7 @@ if (reductionRatio(result) < 0.25) {
 
 `Message` is a subset of Claude Code's `SessionMessage`, so a session transcript
 can be passed in as is; the OpenCode and omp adapters translate their own shapes
-to it in `opencode/index.ts` and `omp/index.ts`.
+to it in `src/opencode/` and `omp/index.ts`.
 
 To bring your own transport, implement `JevAsker` (one `ask(state, questions)`
 method) and call `compact(messages, asker, options)`; `buildJevRequest` and
@@ -331,7 +360,7 @@ environment. Never commit the key or put it in a source file.
 | `provider` | inferred | `typesafe`, `openrouter` or `opencode`; set it with the `provider` option or `FAST_JEV_PROVIDER`, otherwise inferred from `baseUrl` or the key |
 | `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
 | `model` | resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise) | Decision model name; see [Choosing a decision model](#choosing-a-decision-model) |
-| `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone`, `https://openrouter.ai/api/v1/systemone` or `https://opencode.ai/inference/v1/systemone`) |
+| `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone`, `https://openrouter.ai/api/v1/systemone` or `https://opencode.ai/inference/systemone/v1/systemone`) |
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
 | `instructions` | — | What the user asked this compaction to keep or drop (`/compact keep the auth work`), appended after the goal; truncated the way an inferred goal is |
@@ -429,6 +458,7 @@ npm install
 npm run typecheck        # library + hook + adapters
 npm test
 npm run build
+npm run bundle           # rebuild opencode/server.js after changing src/opencode/
 npm run validate:plugin  # claude plugin validate
 TYPESAFE_API_KEY="$(cat ~/.typesafe_key)" npm run demo
 ```

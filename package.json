@@ -11,6 +11,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/opencode/server.d.ts",
+      "import": "./opencode/server.js"
+    },
+    "./opencode": {
+      "types": "./dist/opencode/server.d.ts",
+      "import": "./opencode/server.js"
     }
   },
   "files": [
@@ -18,11 +26,13 @@
     "src",
     "opencode",
     "omp",
+    "install.sh",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
+    "bundle": "esbuild src/opencode/server.ts --bundle --format=esm --platform=node --target=node18 --outfile=opencode/server.js --log-level=warning",
     "typecheck": "tsc --noEmit && npm run typecheck:hooks && npm run typecheck:adapters",
     "test": "vitest run",
     "demo": "tsx examples/demo.ts",
@@ -38,8 +48,10 @@
   },
   "devDependencies": {
     "@oh-my-pi/pi-coding-agent": "^18.4.3",
+    "@opencode-ai/plugin": "^1.18.31",
     "@opencode/plugin": "^2.0.19",
     "@types/node": "^22.10.2",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
