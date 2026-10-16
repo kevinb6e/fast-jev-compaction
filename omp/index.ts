@@ -284,6 +284,8 @@ export interface SummaryOutcome {
   reduction?: number;
   /** File bookkeeping to store with the compaction entry. */
   files?: OmpFileLists;
+  /** Tools that were dropped during compaction. */
+  droppedTools?: string[];
 }
 
 /**
@@ -322,7 +324,7 @@ export async function buildSummary(
   const reduction =
     originalLength > 0 ? (originalLength - (prunedBody.length + prunedTurn.length)) / originalLength : 0;
   if (options.requireKeepSignal && !hasKeepSignal(result)) {
-    return { reason: 'no keep signal: Jev dropped every call it judged', result, reduction, files };
+    return { reason: 'no keep signal: Jev dropped every call it judged', result, reduction, files, droppedTools: droppedToolsFromResult(result) };
   }
   if (reduction < options.minReductionRatio) {
     return {
@@ -330,6 +332,7 @@ export async function buildSummary(
       result,
       reduction,
       files,
+      droppedTools: droppedToolsFromResult(result),
     };
   }
 
@@ -347,9 +350,16 @@ export async function buildSummary(
       result,
       reduction,
       files,
+      droppedTools: droppedToolsFromResult(result),
     };
   }
-  return { summary, result, reduction, files };
+  return { summary, result, reduction, files, droppedTools: droppedToolsFromResult(result) };
+}
+
+function droppedToolsFromResult(result: CompactResult): string[] {
+  const names: string[] = [];
+  for (const d of result.decisions) if (d.action === 'drop_call') names.push(d.tool);
+  return [...new Set(names)];
 }
 
 function percent(ratio: number): string {
@@ -400,12 +410,9 @@ export async function handleBeforeCompact(
     }
     const preparation = event.preparation;
     ctx.ui.notify(
-      `${EXTENSION_ID}: ${statsLine(
-        outcome,
-        endpointHost(
-          resolveJevEndpoint({ provider: options.provider, baseUrl: options.baseUrl }).url,
-        ),
-      )}`,
+      `${EXTENSION_ID}: ${statsLine(outcome, endpointHost(
+        resolveJevEndpoint({ provider: options.provider, baseUrl: options.baseUrl }).url,
+      ))}${outcome.droppedTools?.length ? ` Dropped tools: ${outcome.droppedTools.join(', ')}` : ''}`,
       'info',
     );
     return {

@@ -224,8 +224,21 @@ export function applyToMessages(
   return out;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function getDroppedCallToolsV2(transcript: Transcript, outcome: PruneOutcome): string[] {
+  const dropped: string[] = [];
+  outcome.actions.forEach((action, callID) => {
+    if (action !== 'drop_call') return;
+    for (const msg of transcript.messages) {
+      if (msg.role !== 'assistant') continue;
+      for (const tu of msg.toolUses ?? []) {
+        if (tu.tool_use_id === callID) {
+          dropped.push(tu.tool);
+          return;
+        }
+      }
+    }
+  });
+  return dropped;
 }
 
 function log(message: string): void {
@@ -259,7 +272,10 @@ export const setup: Plugin['setup'] = async (ctx) => {
       if (outcome.actions.size > 0) {
         event.messages = applyToMessages(event.messages, outcome.actions, config.truncateHeadChars);
       }
-      if (outcome.reason === 'pruned') log(`${event.sessionID}: ${describeOutcome(outcome)}`);
+      if (outcome.reason === 'pruned') {
+        const dropped = getDroppedCallToolsV2(transcript, outcome);
+        log(`${event.sessionID}: ${describeOutcome(outcome)}${dropped.length > 0 ? ` Dropped: ${dropped.join(', ')}` : ''}`);
+      }
     } catch (error) {
       log(`${event.sessionID}: left the history alone (${errorMessage(error)})`);
     }
@@ -293,6 +309,7 @@ export const setup: Plugin['setup'] = async (ctx) => {
             tokens,
             messages: pruned.length,
             ...(outcome.result ? outcome.result.stats : {}),
+            droppedTools: getDroppedCallToolsV2(transcript, outcome),
           },
         },
       };

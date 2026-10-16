@@ -161,6 +161,23 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function getDroppedCallTools(transcript: Transcript, outcome: PruneOutcome): string[] {
+  const dropped: string[] = [];
+  outcome.actions.forEach((action, callID) => {
+    if (action !== 'drop_call') return;
+    for (const msg of transcript.messages) {
+      if (msg.role !== 'assistant') continue;
+      for (const tu of msg.toolUses ?? []) {
+        if (tu.tool_use_id === callID) {
+          dropped.push(tu.tool);
+          return;
+        }
+      }
+    }
+  });
+  return dropped;
+}
+
 /** The OpenCode 1.x plugin: `(input, options) => hooks`. */
 export const server: Plugin = async (input, options) => {
   const config = readPrunerOptions(options ?? {});
@@ -210,7 +227,8 @@ export const server: Plugin = async (input, options) => {
           );
         }
         if (outcome.reason === 'pruned') {
-          const text = describeOutcome(outcome);
+          const dropped = getDroppedCallTools(transcript, outcome);
+          const text = describeOutcome(outcome) + (dropped.length > 0 ? ` Dropped: ${dropped.join(', ')}` : '');
           await log('info', text);
           await toast(text);
         }
