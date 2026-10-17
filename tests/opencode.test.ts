@@ -97,6 +97,25 @@ function libTranscript(): Message[] {
   ];
 }
 
+describe('readPrunerOptions agrees with the shared provider ladder', () => {
+  // The adapter used to hand-roll `resolveJevProvider`, and the copy misrouted
+  // an OpenRouter key exported as TYPESAFE_API_KEY to TypeSafe: the 401 the
+  // `sk-or-` rule in src/request.ts exists to prevent.
+  it('routes an OpenRouter-shaped key to OpenRouter, whichever variable holds it', () => {
+    const key = 'sk-or-v1-abc';
+    expect(readPrunerOptions({}, { TYPESAFE_API_KEY: key }).provider).toBe('openrouter');
+    expect(readPrunerOptions({}, { OPENROUTER_API_KEY: key }).provider).toBe('openrouter');
+    expect(readPrunerOptions({}, { TYPESAFE_API_KEY: key }).apiKey).toBe(key);
+  });
+
+  it('infers OpenCode Console from a lone OPENCODE_API_KEY, as the library does', () => {
+    expect(readPrunerOptions({}, { OPENCODE_API_KEY: 'oc' }).provider).toBe('opencode');
+    expect(readPrunerOptions({}, { OPENCODE_API_KEY: 'oc' }).baseUrl).toBe(
+      'https://opencode.ai/inference/systemone/v1/systemone',
+    );
+  });
+});
+
 describe('readPrunerOptions', () => {
   it('fills defaults, reads the key from the environment and ignores malformed values', () => {
     const resolved = readPrunerOptions({ keepThreshold: 'no', contextTokens: NaN }, { TYPESAFE_API_KEY: 'env-key' });
@@ -120,7 +139,7 @@ describe('readPrunerOptions', () => {
     const zen = readPrunerOptions({}, {});
     expect(zen).toMatchObject({ provider: 'zen', model: 'jev-1.13-free', baseUrl: 'https://opencode.ai/zen/v1/systemone', cooldownMs: 60_000 });
     expect(zen.apiKey).toBeUndefined();
-    expect(readPrunerOptions({}, { OPENCODE_API_KEY: 'z' })).toMatchObject({ provider: 'zen', apiKey: 'z' });
+    expect(readPrunerOptions({}, { OPENCODE_API_KEY: 'z' })).toMatchObject({ provider: 'opencode', apiKey: 'z', model: 'jev-1.13' });
     expect(readPrunerOptions({ provider: 'zen', model: 'jev-1.13' }, { TYPESAFE_API_KEY: 'k', OPENCODE_API_KEY: 'z' })).toMatchObject({ provider: 'zen', apiKey: 'z', model: 'jev-1.13' });
     expect(readPrunerOptions({ provider: 'opencode' }, {})).toMatchObject({ provider: 'opencode', model: 'jev-1.13' });
     expect(readPrunerOptions({ provider: 'opencode' }, {}).baseUrl).toBe('https://opencode.ai/inference/systemone/v1/systemone');
