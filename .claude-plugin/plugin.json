@@ -7,18 +7,18 @@
     "provider": {
       "type": "string",
       "title": "Jev provider",
-      "description": "Where Jev is reached: typesafe (needs the key), openrouter, opencode (OpenCode Console) or zen (OpenCode Zen's free Jev, no key). Default: the provider the keys name, zen when there are none."
+      "description": "Where Jev is reached: typesafe (needs the key), openrouter, opencode (OpenCode Console) or zen (OpenCode Zen's free Jev, no key). Default: the provider the keys name, TypeSafe when they name none."
     },
     "apiKey": {
       "type": "string",
       "title": "TypeSafe API key",
-      "description": "TypeSafe API key. Leave unset to use TYPESAFE_API_KEY; without either, Jev is reached at OpenCode Zen's free endpoint, which needs no key.",
+      "description": "TypeSafe API key. Leave unset to use TYPESAFE_API_KEY; without either, the hook resolves TypeSafe and reports the missing key, falling back to the built-in summary. Set provider to zen to use OpenCode Zen's free endpoint instead.",
       "sensitive": true
     },
     "baseUrl": {
       "type": "string",
       "title": "System One endpoint",
-      "description": "Endpoint override. Default: TypeSafe with a key, OpenCode Zen without one."
+      "description": "Endpoint override. Default: TypeSafe with a key, and the resolved provider's own endpoint otherwise."
     },
     "keepThreshold": {
       "type": "number",

@@ -114,6 +114,34 @@ describe('readPrunerOptions agrees with the shared provider ladder', () => {
       'https://opencode.ai/inference/systemone/v1/systemone',
     );
   });
+
+  it('keeps its own terminal: keyless is Zen, a supplied key pins TypeSafe', () => {
+    // The terminal is conditional, so it cannot be a constant on the shared
+    // ladder: `?? 'zen'` alone would send a supplied key to the free endpoint.
+    expect(readPrunerOptions({}, {}).provider).toBe('zen');
+    expect(readPrunerOptions({ apiKey: 'k' }, {}).provider).toBe('typesafe');
+    expect(readPrunerOptions({ apiKey: 'k' }, {}).apiKey).toBe('k');
+  });
+
+  it('does not let a baseUrl move the provider, so a keyless Console stays keyless', () => {
+    // The repo's endpoint-resolution spec forbids this: a keyless baseUrl on
+    // Console works today, and inferring `opencode` would switch to the model
+    // that needs a key.
+    const console_ = 'https://opencode.ai/inference/systemone/v1/systemone';
+    const resolved = readPrunerOptions({ baseUrl: console_ }, {});
+    expect(resolved.provider).toBe('zen');
+    expect(resolved.model).toBe('jev-1.13-free');
+    expect(resolved.baseUrl).toBe(console_);
+  });
+
+  it("lets a supplied key pin the endpoint over the environment's keys", () => {
+    // A supplied key means TypeSafe, so a lone OPENCODE_API_KEY must not win.
+    const resolved = readPrunerOptions({ apiKey: 'k' }, { OPENCODE_API_KEY: 'oc' });
+    expect(resolved.provider).toBe('typesafe');
+    expect(resolved.apiKey).toBe('k');
+    // An explicit override still applies, though.
+    expect(readPrunerOptions({ apiKey: 'k' }, { FAST_JEV_PROVIDER: 'zen' }).provider).toBe('zen');
+  });
 });
 
 describe('readPrunerOptions', () => {

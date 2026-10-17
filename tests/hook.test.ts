@@ -12,7 +12,6 @@ import {
   resolveHookConfig,
   summarize,
   toSessionMessages,
-  withProvider,
   type HookConfig,
 } from '../hooks/fast-jev.ts';
 import {
@@ -307,17 +306,12 @@ describe('session message mapping', () => {
     expect(out[2]).toBe(messages[2]);
   });
 });
-describe('OpenCode Zen fallback', () => {
+describe('OpenCode Zen by explicit configuration', () => {
   it('reaches Zen without a key and sends no authorization header there', async () => {
-    const config = withProvider(resolveHookConfig({ preserveRecentMessages: 1 }), undefined);
-    expect(config).toMatchObject({ provider: 'zen', baseUrl: 'https://opencode.ai/zen/v1/systemone', model: 'jev-1.13-free' });
-    expect(config.apiKey).toBeUndefined();
-    expect(describeProvider(config)).toBe('jev-1.13-free at https://opencode.ai/zen/v1/systemone (no key)');
-    expect(withProvider(resolveHookConfig({ model: 'jev-1.13' }), undefined).model).toBe('jev-1.13');
-    expect(withProvider(resolveHookConfig({}), 'k')).toMatchObject({ apiKey: 'k' });
-    const forced = withProvider(resolveHookConfig({ provider: 'opencode' }), 'k');
-    expect(forced).toMatchObject({ provider: 'opencode', apiKey: 'k' });
-    expect(withProvider(resolveHookConfig({ baseUrl: 'http://jev' }), undefined)).toMatchObject({ baseUrl: 'http://jev' });
+    // Zen is asked for, not fallen into: with no key the hook resolves TypeSafe
+    // and names its missing key, so the free endpoint needs `provider: 'zen'`.
+    const config = { ...resolveHookConfig({ preserveRecentMessages: 1 }), provider: 'zen' as const };
+    expect(describeProvider(config)).toBe('jev-1.13-free at TypeSafe (no key)');
     const urls: string[] = [];
     const headers: string[][] = [];
     const answers = jevFetch(() => 0.9);

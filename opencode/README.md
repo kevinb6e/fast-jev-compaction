@@ -59,12 +59,13 @@ background server). `--dir` uses an existing checkout, `--ref` picks a branch.
 ## Where Jev is reached
 
 With `TYPESAFE_API_KEY` (or the `apiKey` option) the plugin uses TypeSafe's
-endpoint and `jev-latest`; with `OPENROUTER_API_KEY`, OpenRouter's; without
-either, OpenCode Zen's free `jev-1.13-free`, which needs no key
-(`OPENCODE_API_KEY` is sent when set, which also unlocks Zen's paid
-`jev-1.13`). `provider` forces one of `typesafe`, `openrouter`, `opencode`
-(OpenCode Console) or `zen`; `FAST_JEV_PROVIDER` does the same from the
-environment. The plugin logs which it picked at startup. If a Jev request
+endpoint and `jev-latest`; with `OPENROUTER_API_KEY`, OpenRouter's; with
+`OPENCODE_API_KEY` alone, OpenCode Console's; with no key at all, OpenCode Zen's
+free `jev-1.13-free`, which needs no key. `provider` forces one of `typesafe`,
+`openrouter`, `opencode` (OpenCode Console) or `zen`; `FAST_JEV_PROVIDER` does
+the same from the environment. A `baseUrl` chooses the endpoint but never the
+provider, so it cannot move a request to a provider whose key is unavailable.
+The plugin logs which it picked at startup. If a Jev request
 fails, that request goes out unpruned and nothing is asked again for
 `cooldownMs`, so an unreachable endpoint costs one failure per cooldown, not
 one per request.
