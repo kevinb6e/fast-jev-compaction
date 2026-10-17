@@ -210,6 +210,32 @@ describe('apiKeyFor', () => {
     expect(apiKeyFor('typesafe', { OPENROUTER_API_KEY: key })).toBeUndefined();
     expect(apiKeyFor('zen', { TYPESAFE_API_KEY: key })).toBeUndefined();
   });
+
+  it('takes the shaped key even when the other variable also holds one', () => {
+    // Both keys set and only one shaped: the lookup must agree with the router,
+    // which routed on the shape. Taking OPENROUTER_API_KEY here would switch the
+    // provider and the key together.
+    const key = 'sk-or-v1-abc';
+    expect(apiKeyFor('openrouter', { OPENROUTER_API_KEY: 'plain', TYPESAFE_API_KEY: key })).toBe(key);
+    expect(apiKeyFor('openrouter', { OPENCODE_API_KEY: 'plain', TYPESAFE_API_KEY: key })).toBe(key);
+    // The OpenRouter variable's own shaped key still wins over the other's.
+    expect(apiKeyFor('openrouter', { OPENROUTER_API_KEY: key, TYPESAFE_API_KEY: 'sk-or-v1-other' })).toBe(key);
+    // With no shaped key anywhere, the provider's own variable is the answer.
+    expect(apiKeyFor('openrouter', { OPENROUTER_API_KEY: 'plain', TYPESAFE_API_KEY: 't' })).toBe('plain');
+  });
+});
+
+describe('the key-shape rule covers every key variable', () => {
+  it('routes a shaped OPENCODE_API_KEY to OpenRouter, not OpenCode Console', () => {
+    // The Console rung is a bare presence check, so without the shape rule a
+    // shaped key there reached Console with a model Console cannot serve.
+    const key = 'sk-or-v1-abc';
+    expect(inferJevProvider({}, { OPENCODE_API_KEY: key })).toBe('openrouter');
+    expect(apiKeyFor('openrouter', { OPENCODE_API_KEY: key })).toBe(key);
+    // A shaped key loses to an explicit choice, as every shape rule does.
+    expect(inferJevProvider({ provider: 'zen' }, { OPENCODE_API_KEY: key })).toBe('zen');
+    expect(inferJevProvider({}, { OPENCODE_API_KEY: 'oc-key' })).toBe('opencode');
+  });
 });
 
 describe('provider helpers', () => {

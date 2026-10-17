@@ -44,7 +44,7 @@ function inferJevProvider(options = {}, env = {}) {
   }
   const typesafe = env[PROVIDERS.typesafe.envKey];
   const openrouter = env[PROVIDERS.openrouter.envKey];
-  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX) || openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) {
+  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX) || openrouter?.startsWith(OPENROUTER_KEY_PREFIX) || env[PROVIDERS.opencode.envKey]?.startsWith(OPENROUTER_KEY_PREFIX)) {
     return "openrouter";
   }
   if (typesafe) return "typesafe";
@@ -56,10 +56,14 @@ function resolveJevProvider(options = {}, env = {}) {
   return inferJevProvider(options, env) ?? "typesafe";
 }
 function apiKeyFor(provider, env) {
-  const own = env[PROVIDERS[provider].envKey];
-  if (own) return own;
+  if (provider !== "openrouter") return env[PROVIDERS[provider].envKey] || void 0;
   const typesafe = env[PROVIDERS.typesafe.envKey];
-  return provider === "openrouter" && typesafe?.startsWith(OPENROUTER_KEY_PREFIX) ? typesafe : void 0;
+  const openrouter = env[PROVIDERS.openrouter.envKey];
+  const opencode = env[PROVIDERS.opencode.envKey];
+  if (openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) return openrouter;
+  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX)) return typesafe;
+  if (opencode?.startsWith(OPENROUTER_KEY_PREFIX)) return opencode;
+  return openrouter || void 0;
 }
 function buildJevRequest(params, state, questions) {
   return {

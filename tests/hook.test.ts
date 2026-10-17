@@ -324,4 +324,24 @@ describe('OpenCode Zen by explicit configuration', () => {
     expect(headers).toEqual([['content-type']]);
     expect(output.stats.requests).toBe(1);
   });
+
+  it('keeps a configured baseUrl, a chosen model and a supplied key', async () => {
+    const base = resolveHookConfig({ preserveRecentMessages: 1 });
+    const asked = (config: HookConfig) => {
+      const urls: string[] = [];
+      return compactSession(transcript(), config, async (url, init) => {
+        urls.push(url);
+        return jevFetch(() => 0.9)(url, init);
+      }).then(() => urls[0]);
+    };
+    // A configured endpoint still wins over the provider's own.
+    expect(await asked({ ...base, provider: 'zen', baseUrl: 'http://jev.local' })).toBe(
+      'http://jev.local',
+    );
+    // An explicitly chosen model survives the provider's default.
+    expect(describeProvider({ ...base, provider: 'zen', model: 'jev-1.13' })).toContain('jev-1.13');
+    // A supplied key is carried, and reaches its own endpoint.
+    const keyed = { ...base, provider: 'zen' as const, apiKey: 'k' };
+    expect(await asked(keyed)).toBe('https://opencode.ai/zen/v1/systemone');
+  });
 });

@@ -5,10 +5,11 @@ result is scored in one fast request; stale ones are dropped or truncated and
 everything kept stays verbatim. One scoring core (`src/`) drives adapters for
 several harnesses, and is usable on its own as an npm library.
 
-No API key is needed: without a TypeSafe key, the Claude Code hook and the
-OpenCode plugin reach Jev at [OpenCode Zen](https://opencode.ai/docs/zen),
-whose `jev-1.13-free` model is free and unauthenticated. Set `TYPESAFE_API_KEY`
-to use TypeSafe's own endpoint instead.
+No API key is needed: without one, the OpenCode plugin reaches Jev at
+[OpenCode Zen](https://opencode.ai/docs/zen), whose `jev-1.13-free` model is
+free and unauthenticated. The Claude Code hook and omp resolve TypeSafe and
+report the missing key, so set `provider: "zen"` there to use the free endpoint
+instead. Set `TYPESAFE_API_KEY` to use TypeSafe's own endpoint.
 
 ## What and why
 
@@ -365,7 +366,7 @@ relying on the environment. Never commit the key or put it in a source file.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `provider` | inferred | `typesafe`, `openrouter` or `opencode`; set it with the `provider` option or `FAST_JEV_PROVIDER`, otherwise inferred from `baseUrl` or the key |
+| `provider` | inferred | `typesafe`, `openrouter`, `opencode` or `zen`; set it with the `provider` option or `FAST_JEV_PROVIDER`, otherwise inferred from `baseUrl` or the key |
 | `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
 | `model` | resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise) | Decision model name; see [Choosing a decision model](#choosing-a-decision-model) |
 | `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone`, `https://openrouter.ai/api/v1/systemone` or `https://opencode.ai/inference/systemone/v1/systemone`) |

@@ -118,7 +118,11 @@ export function inferJevProvider(
   const openrouter = env[PROVIDERS.openrouter.envKey];
   // An OpenRouter key means OpenRouter wherever it is exported: a common setup
   // puts it in `TYPESAFE_API_KEY`, which would otherwise win and 401.
-  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX) || openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) {
+  if (
+    typesafe?.startsWith(OPENROUTER_KEY_PREFIX) ||
+    openrouter?.startsWith(OPENROUTER_KEY_PREFIX) ||
+    env[PROVIDERS.opencode.envKey]?.startsWith(OPENROUTER_KEY_PREFIX)
+  ) {
     return 'openrouter';
   }
   // A set `TYPESAFE_API_KEY` outranks a lone `OPENROUTER_API_KEY`; swapping
@@ -142,21 +146,25 @@ export function resolveJevProvider(
 
 /**
  * The key a provider is reached with: its own variable, or the `sk-or-` key that
- * selected OpenRouter. The shape rule lives here once, so routing and the key
- * lookup cannot disagree: without this, an `sk-or-` key in `TYPESAFE_API_KEY`
- * routes to OpenRouter and then goes missing, because `PROVIDERS.openrouter`
- * names a different variable.
+ * selected OpenRouter. The shape rule is the router's own, checked over both
+ * variables in the same order, so routing and the key lookup cannot disagree:
+ * otherwise an `sk-or-` key in `TYPESAFE_API_KEY` routes to OpenRouter and then
+ * goes missing, because `PROVIDERS.openrouter` names a different variable.
  */
 export function apiKeyFor(
   provider: JevProvider,
   env: Record<string, string | undefined>,
 ): string | undefined {
-  const own = env[PROVIDERS[provider].envKey];
-  if (own) return own;
+  if (provider !== 'openrouter') return env[PROVIDERS[provider].envKey] || undefined;
+  // Mirrors `inferJevProvider`: the shape decides which variable holds the key,
+  // since a key keeps its shape wherever it is exported.
   const typesafe = env[PROVIDERS.typesafe.envKey];
-  return provider === 'openrouter' && typesafe?.startsWith(OPENROUTER_KEY_PREFIX)
-    ? typesafe
-    : undefined;
+  const openrouter = env[PROVIDERS.openrouter.envKey];
+  const opencode = env[PROVIDERS.opencode.envKey];
+  if (openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) return openrouter;
+  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX)) return typesafe;
+  if (opencode?.startsWith(OPENROUTER_KEY_PREFIX)) return opencode;
+  return openrouter || undefined;
 }
 
 export interface JevEndpoint {
