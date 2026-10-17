@@ -97,6 +97,53 @@ function libTranscript(): Message[] {
   ];
 }
 
+describe('readPrunerOptions agrees with the shared provider ladder', () => {
+  // The adapter used to hand-roll `resolveJevProvider`, and the copy misrouted
+  // an OpenRouter key exported as TYPESAFE_API_KEY to TypeSafe: the 401 the
+  // `sk-or-` rule in src/request.ts exists to prevent.
+  it('routes an OpenRouter-shaped key to OpenRouter, whichever variable holds it', () => {
+    const key = 'sk-or-v1-abc';
+    expect(readPrunerOptions({}, { TYPESAFE_API_KEY: key }).provider).toBe('openrouter');
+    expect(readPrunerOptions({}, { OPENROUTER_API_KEY: key }).provider).toBe('openrouter');
+    expect(readPrunerOptions({}, { TYPESAFE_API_KEY: key }).apiKey).toBe(key);
+  });
+
+  it('infers OpenCode Console from a lone OPENCODE_API_KEY, as the library does', () => {
+    expect(readPrunerOptions({}, { OPENCODE_API_KEY: 'oc' }).provider).toBe('opencode');
+    expect(readPrunerOptions({}, { OPENCODE_API_KEY: 'oc' }).baseUrl).toBe(
+      'https://opencode.ai/inference/systemone/v1/systemone',
+    );
+  });
+
+  it('keeps its own terminal: keyless is Zen, a supplied key pins TypeSafe', () => {
+    // The terminal is conditional, so it cannot be a constant on the shared
+    // ladder: `?? 'zen'` alone would send a supplied key to the free endpoint.
+    expect(readPrunerOptions({}, {}).provider).toBe('zen');
+    expect(readPrunerOptions({ apiKey: 'k' }, {}).provider).toBe('typesafe');
+    expect(readPrunerOptions({ apiKey: 'k' }, {}).apiKey).toBe('k');
+  });
+
+  it('does not let a baseUrl move the provider, so a keyless Console stays keyless', () => {
+    // The repo's endpoint-resolution spec forbids this: a keyless baseUrl on
+    // Console works today, and inferring `opencode` would switch to the model
+    // that needs a key.
+    const console_ = 'https://opencode.ai/inference/systemone/v1/systemone';
+    const resolved = readPrunerOptions({ baseUrl: console_ }, {});
+    expect(resolved.provider).toBe('zen');
+    expect(resolved.model).toBe('jev-1.13-free');
+    expect(resolved.baseUrl).toBe(console_);
+  });
+
+  it("lets a supplied key pin the endpoint over the environment's keys", () => {
+    // A supplied key means TypeSafe, so a lone OPENCODE_API_KEY must not win.
+    const resolved = readPrunerOptions({ apiKey: 'k' }, { OPENCODE_API_KEY: 'oc' });
+    expect(resolved.provider).toBe('typesafe');
+    expect(resolved.apiKey).toBe('k');
+    // An explicit override still applies, though.
+    expect(readPrunerOptions({ apiKey: 'k' }, { FAST_JEV_PROVIDER: 'zen' }).provider).toBe('zen');
+  });
+});
+
 describe('readPrunerOptions', () => {
   it('fills defaults, reads the key from the environment and ignores malformed values', () => {
     const resolved = readPrunerOptions({ keepThreshold: 'no', contextTokens: NaN }, { TYPESAFE_API_KEY: 'env-key' });
@@ -120,7 +167,7 @@ describe('readPrunerOptions', () => {
     const zen = readPrunerOptions({}, {});
     expect(zen).toMatchObject({ provider: 'zen', model: 'jev-1.13-free', baseUrl: 'https://opencode.ai/zen/v1/systemone', cooldownMs: 60_000 });
     expect(zen.apiKey).toBeUndefined();
-    expect(readPrunerOptions({}, { OPENCODE_API_KEY: 'z' })).toMatchObject({ provider: 'zen', apiKey: 'z' });
+    expect(readPrunerOptions({}, { OPENCODE_API_KEY: 'z' })).toMatchObject({ provider: 'opencode', apiKey: 'z', model: 'jev-1.13' });
     expect(readPrunerOptions({ provider: 'zen', model: 'jev-1.13' }, { TYPESAFE_API_KEY: 'k', OPENCODE_API_KEY: 'z' })).toMatchObject({ provider: 'zen', apiKey: 'z', model: 'jev-1.13' });
     expect(readPrunerOptions({ provider: 'opencode' }, {})).toMatchObject({ provider: 'opencode', model: 'jev-1.13' });
     expect(readPrunerOptions({ provider: 'opencode' }, {}).baseUrl).toBe('https://opencode.ai/inference/systemone/v1/systemone');

@@ -12,14 +12,13 @@ import { compact, hasKeepSignal, reductionRatio, resolveOptions } from '../src/c
 import { renderTranscript } from '../src/render.js';
 import { estimateTokens } from '../src/state.js';
 import {
+  apiKeyFor,
   buildJevRequest,
   defaultModelFor,
   endpointHost,
   environmentEndpoint,
   isJevProvider,
   missingApiKeyError,
-  OPENCODE_ZEN_FREE_MODEL,
-  OPENCODE_ZEN_URL,
   parseJevResponse,
   PROVIDER_OVERRIDE_ENV_KEY,
   PROVIDERS,
@@ -213,22 +212,6 @@ export type SessionCompaction = {
   result: CompactResult;
   messages: SessionMessage[];
 };
-
-/**
- * Without a key, the same config pointed at OpenCode Zen's free Jev, which
- * needs none (the model too, unless one was chosen explicitly). A supplied
- * key and a `baseUrl` override always win.
- */
-export function withProvider(config: HookConfig, apiKey: string | undefined): HookConfig {
-  if (apiKey) return { ...config, apiKey };
-  if (config.baseUrl) return config;
-  return {
-    ...config,
-    provider: 'zen',
-    baseUrl: OPENCODE_ZEN_URL,
-    model: config.model ?? OPENCODE_ZEN_FREE_MODEL,
-  };
-}
 
 /** Where Jev is reached, for the log. */
 export function describeProvider(config: HookConfig): string {
@@ -487,7 +470,7 @@ export async function getCredentials(
     },
     config.apiKey === undefined ? env : undefined,
   );
-  const apiKey = config.apiKey ?? env[PROVIDERS[provider].envKey];
+  const apiKey = config.apiKey ?? apiKeyFor(provider, env);
   // A configured endpoint wins; otherwise the environment decides where the
   // transcript goes, which is why the outcome line names the host.
   const baseUrl = config.baseUrl ?? environmentEndpoint(env, provider);

@@ -32,8 +32,8 @@ function defaultModelFor(provider) {
 function missingApiKeyError(provider) {
   return new Error(`${PROVIDERS[provider].envKey} is not configured`);
 }
-function resolveJevProvider(options = {}, env = {}) {
-  if (options.provider) return options.provider;
+function inferJevProvider(options = {}, env = {}) {
+  if (isJevProvider(options.provider)) return options.provider;
   const override = env[PROVIDER_OVERRIDE_ENV_KEY];
   if (isJevProvider(override)) return override;
   if (options.baseUrl) {
@@ -44,12 +44,26 @@ function resolveJevProvider(options = {}, env = {}) {
   }
   const typesafe = env[PROVIDERS.typesafe.envKey];
   const openrouter = env[PROVIDERS.openrouter.envKey];
-  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX) || openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) {
+  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX) || openrouter?.startsWith(OPENROUTER_KEY_PREFIX) || env[PROVIDERS.opencode.envKey]?.startsWith(OPENROUTER_KEY_PREFIX)) {
     return "openrouter";
   }
-  if (openrouter && !typesafe) return "openrouter";
-  if (env[PROVIDERS.opencode.envKey] && !typesafe && !openrouter) return "opencode";
-  return "typesafe";
+  if (typesafe) return "typesafe";
+  if (openrouter) return "openrouter";
+  if (env[PROVIDERS.opencode.envKey]) return "opencode";
+  return void 0;
+}
+function resolveJevProvider(options = {}, env = {}) {
+  return inferJevProvider(options, env) ?? "typesafe";
+}
+function apiKeyFor(provider, env) {
+  if (provider !== "openrouter") return env[PROVIDERS[provider].envKey] || void 0;
+  const typesafe = env[PROVIDERS.typesafe.envKey];
+  const openrouter = env[PROVIDERS.openrouter.envKey];
+  const opencode = env[PROVIDERS.opencode.envKey];
+  if (openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) return openrouter;
+  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX)) return typesafe;
+  if (opencode?.startsWith(OPENROUTER_KEY_PREFIX)) return opencode;
+  return openrouter || void 0;
 }
 function buildJevRequest(params, state, questions) {
   return {
@@ -788,7 +802,7 @@ var JevClient = class {
       { provider: options.provider, baseUrl: options.baseUrl },
       options.apiKey === void 0 ? env : void 0
     );
-    this.apiKey = options.apiKey ?? env[PROVIDERS[this.provider].envKey] ?? "";
+    this.apiKey = options.apiKey ?? apiKeyFor(this.provider, env) ?? "";
     this.model = options.model;
     this.baseUrl = options.baseUrl;
     this.fetcher = options.fetch ?? fetch;
@@ -848,15 +862,17 @@ function readPrunerOptions(options = {}, env = process.env) {
     const value = options[key];
     return typeof value === "string" && value.length > 0 ? value : void 0;
   };
+  const apiKeyOption = string("apiKey");
   let model = string("model") ?? (env["FAST_JEV_MODEL"] || void 0);
-  let explicitProvider = options["provider"] ?? (env["FAST_JEV_PROVIDER"] || void 0);
-  if (model?.startsWith("opencode/")) {
-    model = model.slice("opencode/".length);
-    explicitProvider ??= "zen";
-  }
-  const typesafeKey = string("apiKey") ?? (env["TYPESAFE_API_KEY"] || void 0);
-  const openrouterKey = env[PROVIDERS.openrouter.envKey];
-  const provider = explicitProvider === "typesafe" || explicitProvider === "openrouter" || explicitProvider === "opencode" || explicitProvider === "zen" ? explicitProvider : typesafeKey ? "typesafe" : openrouterKey ? "openrouter" : "zen";
+  const opencodeModel = model?.startsWith("opencode/") ?? false;
+  if (opencodeModel) model = model.slice("opencode/".length);
+  const named = string("provider") ?? (env[PROVIDER_OVERRIDE_ENV_KEY] || void 0) ?? (opencodeModel ? "zen" : void 0);
+  const provider = inferJevProvider(
+    { provider: isJevProvider(named) ? named : void 0 },
+    // A supplied key pins the endpoint, so the environment's keys must not
+    // override it; an explicit provider override still applies.
+    apiKeyOption === void 0 ? env : { [PROVIDER_OVERRIDE_ENV_KEY]: env[PROVIDER_OVERRIDE_ENV_KEY] }
+  ) ?? (apiKeyOption === void 0 ? "zen" : "typesafe");
   const resolved = {
     ...resolveOptions({
       goal: string("goal"),
@@ -873,9 +889,9 @@ function readPrunerOptions(options = {}, env = process.env) {
     checkpointTokens: numbers.checkpointTokens ?? PRUNER_DEFAULTS.checkpointTokens,
     cooldownMs: Math.max(0, numbers.cooldownMs ?? PRUNER_DEFAULTS.cooldownMs)
   };
-  const apiKey = string("apiKey") ?? (provider === "openrouter" ? openrouterKey : provider === "typesafe" ? typesafeKey : env[PROVIDERS[provider].envKey] || void 0);
+  const apiKey = apiKeyOption ?? apiKeyFor(provider, env);
   if (apiKey) resolved.apiKey = apiKey;
-  const baseUrl = string("baseUrl") ?? (provider === "zen" ? OPENCODE_ZEN_URL : provider === "opencode" ? PROVIDERS.opencode.url : void 0);
+  const baseUrl = string("baseUrl") ?? (provider === "zen" || provider === "opencode" ? PROVIDERS[provider].url : void 0);
   if (baseUrl) resolved.baseUrl = baseUrl;
   return resolved;
 }

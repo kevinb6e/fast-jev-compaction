@@ -5,10 +5,11 @@ result is scored in one fast request; stale ones are dropped or truncated and
 everything kept stays verbatim. One scoring core (`src/`) drives adapters for
 several harnesses, and is usable on its own as an npm library.
 
-No API key is needed: without a TypeSafe key, the Claude Code hook and the
-OpenCode plugin reach Jev at [OpenCode Zen](https://opencode.ai/docs/zen),
-whose `jev-1.13-free` model is free and unauthenticated. Set `TYPESAFE_API_KEY`
-to use TypeSafe's own endpoint instead.
+No API key is needed: without one, the OpenCode plugin reaches Jev at
+[OpenCode Zen](https://opencode.ai/docs/zen), whose `jev-1.13-free` model is
+free and unauthenticated. The Claude Code hook and omp resolve TypeSafe and
+report the missing key, so set `provider: "zen"` there to use the free endpoint
+instead. Set `TYPESAFE_API_KEY` to use TypeSafe's own endpoint.
 
 ## What and why
 
@@ -225,15 +226,18 @@ overrides the default model (see [Choosing a decision model](#choosing-a-decisio
 4. an OpenRouter-shaped key (`sk-or-`) in **either** key variable;
 5. a lone `OPENROUTER_API_KEY`;
 6. a set `TYPESAFE_API_KEY`;
-7. otherwise OpenCode Zen, whose free Jev needs no key.
+7. otherwise the host's own terminal: TypeSafe for the library, hook and omp,
+   and OpenCode Zen's keyless free Jev for the OpenCode plugin.
 
 So `TYPESAFE_API_KEY` outranks a set `OPENROUTER_API_KEY` (rule 6 beats rule 5)
 unless that key is `sk-or-`-shaped. Rule 4 reads the key's own shape because a
 key keeps it wherever it is exported — a common setup exports an OpenRouter key
 as `TYPESAFE_API_KEY`, and without that rule TypeSafe would be chosen and the
-request would 401. With no key at all, every host falls back to Zen: the Claude
-Code hook and the OpenCode plugin switch to `jev-1.13-free` and log it, and the
-library's `JevClient` sends no `authorization` header.
+request would 401. With no key at all, only the OpenCode plugin falls back to
+Zen's free `jev-1.13-free`: the Claude Code hook and omp resolve TypeSafe and
+report its missing key, so ask for Zen with `provider: "zen"` there. The
+library's `JevClient` resolves TypeSafe and throws the same missing-key error
+rather than sending a keyless request.
 
 **API key** — an explicit `apiKey` option, then `FAST_JEV_API_KEY` (omp and
 OpenCode), then the resolved provider's own variable.
@@ -312,7 +316,9 @@ export OPENROUTER_API_KEY=...      # or OPENCODE_API_KEY / TYPESAFE_API_KEY
 export FAST_JEV_PROVIDER=openrouter
 ```
 
-Without any key, the hook and the OpenCode plugin use Zen's free Jev. To use
+Without any key, only the OpenCode plugin uses Zen's free Jev; the hook and omp
+resolve TypeSafe and report the missing key, so ask for Zen there with
+`provider: "zen"`. To use
 Zen from the library, pass `{ apiKey: '', baseUrl: OPENCODE_ZEN_URL, model:
 OPENCODE_ZEN_FREE_MODEL }` (both constants are exported); a key is only required
 for the keyed providers, and an empty key sends no `authorization` header.
@@ -349,17 +355,18 @@ The building blocks (`collectToolCalls`, `fitState`, `batchCalls`,
 `decideCall`, `applyDecisions`) are exported too.
 
 `apiKey` defaults to the variable of the resolved provider
-(`TYPESAFE_API_KEY`, `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`), and
-`FAST_JEV_PROVIDER` names the provider outright — it beats `baseUrl` and the
-key-shape inference, and an unknown name is ignored. A supplied `apiKey` still
-pins the endpoint, so pass `provider` alongside it rather than relying on the
-environment. Never commit the key or put it in a source file.
+(`TYPESAFE_API_KEY`, `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`), and an
+`sk-or-`-shaped key is taken from either variable, since that is the key the
+shape rule routed on. `FAST_JEV_PROVIDER` names the provider outright — it beats
+`baseUrl` and the key-shape inference, and an unknown name is ignored. A supplied
+`apiKey` still pins the endpoint, so pass `provider` alongside it rather than
+relying on the environment. Never commit the key or put it in a source file.
 
 ## Options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `provider` | inferred | `typesafe`, `openrouter` or `opencode`; set it with the `provider` option or `FAST_JEV_PROVIDER`, otherwise inferred from `baseUrl` or the key |
+| `provider` | inferred | `typesafe`, `openrouter`, `opencode` or `zen`; set it with the `provider` option or `FAST_JEV_PROVIDER`, otherwise inferred from `baseUrl` or the key |
 | `apiKey` | `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
 | `model` | resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise) | Decision model name; see [Choosing a decision model](#choosing-a-decision-model) |
 | `baseUrl` | provider endpoint | System One endpoint (`https://api.typesafe.ai/v1/systemone`, `https://openrouter.ai/api/v1/systemone` or `https://opencode.ai/inference/systemone/v1/systemone`) |

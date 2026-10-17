@@ -29,7 +29,7 @@ hooks surface before installing or loading it:
 
 ```sh
 export CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1
-export TYPESAFE_API_KEY="<your TypeSafe key>"   # optional; without it Jev is reached at OpenCode Zen
+export TYPESAFE_API_KEY="<your TypeSafe key>"   # optional; without it the hook reports the missing key and uses the built-in summary
 
 claude plugin marketplace add kevinb6e/fast-jev-compaction
 claude plugin install fast-jev-compaction@fast-jev-compaction
@@ -64,9 +64,10 @@ The key can be supplied as the sensitive `apiKey` plugin option or through
 `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY`, and
 `FAST_JEV_PROVIDER` names the provider (`typesafe`, `openrouter`, `opencode` or
 `zen`) when the keys alone are ambiguous; it beats `baseUrl` and the key
-inference, and an unknown name is ignored. Without a key at all the hook reaches
-Jev at OpenCode Zen's free endpoint (`jev-1.13-free`, no `authorization`
-header) and logs which endpoint it picked. The environment variable is the
+inference, and an unknown name is ignored. Without a key at all the hook resolves
+TypeSafe and reports that `TYPESAFE_API_KEY` is not configured, falling back to
+the built-in summary; to use Zen's free endpoint instead, set `provider` to
+`zen`. The environment variable is the
 recommended development setup. Each variable is read from the process
 environment first, then from the `env` block of the Claude Code settings.
 

@@ -1,6 +1,13 @@
 import { JevClient } from '../client.js';
 import { applyActions, compact, resolveOptions } from '../compact.js';
-import { OPENCODE_ZEN_URL, PROVIDERS, type JevProvider } from '../request.js';
+import {
+  apiKeyFor,
+  inferJevProvider,
+  isJevProvider,
+  PROVIDERS,
+  PROVIDER_OVERRIDE_ENV_KEY,
+  type JevProvider,
+} from '../request.js';
 import { collectToolCalls, estimateTokens } from '../state.js';
 import type {
   CallAction,
@@ -79,13 +86,15 @@ type NumberKey = (typeof NUMBER_KEYS)[number];
 
 /**
  * Reads an untyped options bag (an OpenCode plugin's `options`) into resolved
- * pruner options. Anything missing or malformed takes the default. With a
- * TypeSafe key Jev is reached at TypeSafe, with an OpenRouter key at
- * OpenRouter, and without either at OpenCode Zen's free Jev, with
- * `OPENCODE_API_KEY` sent when set. `FAST_JEV_PROVIDER` and `FAST_JEV_MODEL`
- * in `env` stand in for the `provider` and `model` options (options win), so a
- * plugin-directory install that takes no options can still choose; a model
- * written the OpenCode way, `opencode/jev-1.13-free`, selects Zen by itself.
+ * pruner options. Anything missing or malformed takes the default. The provider
+ * comes from the shared ladder (`inferJevProvider`), so a TypeSafe key is
+ * reached at TypeSafe, an OpenRouter key at OpenRouter, and a lone
+ * `OPENCODE_API_KEY` at OpenCode Console; with no key at all this adapter's own
+ * terminal applies, OpenCode Zen's free Jev. `FAST_JEV_PROVIDER` and
+ * `FAST_JEV_MODEL` in `env` stand in for the `provider` and `model` options
+ * (options win), so a plugin-directory install that takes no options can still
+ * choose; a model written the OpenCode way, `opencode/jev-1.13-free`, selects
+ * Zen by itself.
  */
 export function readPrunerOptions(
   options: Readonly<Record<string, unknown>> = {},
@@ -100,25 +109,34 @@ export function readPrunerOptions(
     const value = options[key];
     return typeof value === 'string' && value.length > 0 ? value : undefined;
   };
+  const apiKeyOption = string('apiKey');
   let model = string('model') ?? (env['FAST_JEV_MODEL'] || undefined);
-  let explicitProvider: unknown = options['provider'] ?? (env['FAST_JEV_PROVIDER'] || undefined);
-  if (model?.startsWith('opencode/')) {
-    model = model.slice('opencode/'.length);
-    explicitProvider ??= 'zen';
-  }
-  const typesafeKey = string('apiKey') ?? (env['TYPESAFE_API_KEY'] || undefined);
-  const openrouterKey = env[PROVIDERS.openrouter.envKey];
+  // An OpenCode-style model name selects Zen by itself; the prefix is stripped
+  // so the slug that reaches the endpoint is the bare one.
+  const opencodeModel = model?.startsWith('opencode/') ?? false;
+  if (opencodeModel) model = model!.slice('opencode/'.length);
+
+  // Named outright: the option, then `FAST_JEV_PROVIDER`, then OpenCode's own
+  // model convention. Everything below that is inferred by the shared ladder.
+  const named =
+    string('provider') ??
+    (env[PROVIDER_OVERRIDE_ENV_KEY] || undefined) ??
+    (opencodeModel ? 'zen' : undefined);
+  // The terminal is this adapter's own, and it is conditional: a supplied key
+  // pins the endpoint (TypeSafe), while a keyless adapter falls back to Zen's
+  // free Jev. `baseUrl` is deliberately not passed, because endpoint resolution
+  // must not change the provider: a keyless baseUrl on Console works today, and
+  // inferring `opencode` there would switch to a model that needs a key.
   const provider: ResolvedPrunerOptions['provider'] =
-    explicitProvider === 'typesafe' ||
-    explicitProvider === 'openrouter' ||
-    explicitProvider === 'opencode' ||
-    explicitProvider === 'zen'
-      ? explicitProvider
-      : typesafeKey
-        ? 'typesafe'
-        : openrouterKey
-          ? 'openrouter'
-          : 'zen';
+    inferJevProvider(
+      { provider: isJevProvider(named) ? named : undefined },
+      // A supplied key pins the endpoint, so the environment's keys must not
+      // override it; an explicit provider override still applies.
+      apiKeyOption === undefined
+        ? env
+        : { [PROVIDER_OVERRIDE_ENV_KEY]: env[PROVIDER_OVERRIDE_ENV_KEY] },
+    ) ?? (apiKeyOption === undefined ? 'zen' : 'typesafe');
+
   const resolved: ResolvedPrunerOptions = {
     ...resolveOptions({
       goal: string('goal'),
@@ -135,17 +153,13 @@ export function readPrunerOptions(
     checkpointTokens: numbers.checkpointTokens ?? PRUNER_DEFAULTS.checkpointTokens,
     cooldownMs: Math.max(0, numbers.cooldownMs ?? PRUNER_DEFAULTS.cooldownMs),
   };
-  const apiKey =
-    string('apiKey') ??
-    (provider === 'openrouter'
-      ? openrouterKey
-      : provider === 'typesafe'
-        ? typesafeKey
-        : env[PROVIDERS[provider].envKey] || undefined);
+  const apiKey = apiKeyOption ?? apiKeyFor(provider, env);
   if (apiKey) resolved.apiKey = apiKey;
+  // Zen and Console both name their own URL, so the log line and `missingKey`
+  // say where the call goes; TypeSafe is the assumed default.
   const baseUrl =
     string('baseUrl') ??
-    (provider === 'zen' ? OPENCODE_ZEN_URL : provider === 'opencode' ? PROVIDERS.opencode.url : undefined);
+    (provider === 'zen' || provider === 'opencode' ? PROVIDERS[provider].url : undefined);
   if (baseUrl) resolved.baseUrl = baseUrl;
   return resolved;
 }

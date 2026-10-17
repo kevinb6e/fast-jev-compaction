@@ -82,27 +82,30 @@ export function missingApiKeyError(provider: JevProvider): Error {
 }
 
 export interface JevEndpointOptions {
-  /** Explicit provider; wins over every inference below. */
+  /** Explicit provider; wins over every inference below. An unknown name is ignored. */
   provider?: JevProvider;
   /** Explicit endpoint; wins over the provider's own URL. */
   baseUrl?: string;
 }
 
 /**
- * Which provider to call: an explicit `provider`, then `FAST_JEV_PROVIDER`
- * when it names one, then a `baseUrl` on `openrouter.ai` or `opencode.ai`,
- * then the environment (a lone `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`
- * means that provider, a `TYPESAFE_API_KEY` wins over both, anything else
- * means TypeSafe), then TypeSafe. The environment is only read when a map is
- * passed, so a caller without one is deterministic.
+ * The provider the options and the environment infer, or `undefined` when every
+ * rung declines to name one. There is no terminal rung: each surface supplies
+ * its own, so the one thing the surfaces differ in is written at the call site
+ * that owns it instead of being baked into the shared ladder.
+ *
+ * Rungs, first match wins: the `provider` option, `FAST_JEV_PROVIDER`, a
+ * `baseUrl` on a known host, an `sk-or-` key in either variable, a set
+ * `TYPESAFE_API_KEY`, a lone `OPENROUTER_API_KEY`, a lone `OPENCODE_API_KEY`.
+ * An unknown provider name is ignored, matching `FAST_JEV_PROVIDER`.
  */
-export function resolveJevProvider(
+export function inferJevProvider(
   options: JevEndpointOptions = {},
   env: Record<string, string | undefined> = {},
-): JevProvider {
-  if (options.provider) return options.provider;
-  // The one knob that names a provider outright; it beats every inference below
-  // and is the only provider setting the library path needs.
+): JevProvider | undefined {
+  // Validated, not trusted: `PROVIDERS` is a record over `JevProvider`, so an
+  // unchecked name indexes it as `undefined` downstream.
+  if (isJevProvider(options.provider)) return options.provider;
   const override = env[PROVIDER_OVERRIDE_ENV_KEY];
   if (isJevProvider(override)) return override;
   if (options.baseUrl) {
@@ -115,12 +118,53 @@ export function resolveJevProvider(
   const openrouter = env[PROVIDERS.openrouter.envKey];
   // An OpenRouter key means OpenRouter wherever it is exported: a common setup
   // puts it in `TYPESAFE_API_KEY`, which would otherwise win and 401.
-  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX) || openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) {
+  if (
+    typesafe?.startsWith(OPENROUTER_KEY_PREFIX) ||
+    openrouter?.startsWith(OPENROUTER_KEY_PREFIX) ||
+    env[PROVIDERS.opencode.envKey]?.startsWith(OPENROUTER_KEY_PREFIX)
+  ) {
     return 'openrouter';
   }
-  if (openrouter && !typesafe) return 'openrouter';
-  if (env[PROVIDERS.opencode.envKey] && !typesafe && !openrouter) return 'opencode';
-  return 'typesafe';
+  // A set `TYPESAFE_API_KEY` outranks a lone `OPENROUTER_API_KEY`; swapping
+  // these two lines misroutes that pair to OpenRouter.
+  if (typesafe) return 'typesafe';
+  if (openrouter) return 'openrouter';
+  if (env[PROVIDERS.opencode.envKey]) return 'opencode';
+  return undefined;
+}
+
+/**
+ * `inferJevProvider` with TypeSafe as the terminal, the library's own default.
+ * The signature is unchanged, so every existing call site keeps working.
+ */
+export function resolveJevProvider(
+  options: JevEndpointOptions = {},
+  env: Record<string, string | undefined> = {},
+): JevProvider {
+  return inferJevProvider(options, env) ?? 'typesafe';
+}
+
+/**
+ * The key a provider is reached with: its own variable, or the `sk-or-` key that
+ * selected OpenRouter. The shape rule is the router's own, checked over both
+ * variables in the same order, so routing and the key lookup cannot disagree:
+ * otherwise an `sk-or-` key in `TYPESAFE_API_KEY` routes to OpenRouter and then
+ * goes missing, because `PROVIDERS.openrouter` names a different variable.
+ */
+export function apiKeyFor(
+  provider: JevProvider,
+  env: Record<string, string | undefined>,
+): string | undefined {
+  if (provider !== 'openrouter') return env[PROVIDERS[provider].envKey] || undefined;
+  // Mirrors `inferJevProvider`: the shape decides which variable holds the key,
+  // since a key keeps its shape wherever it is exported.
+  const typesafe = env[PROVIDERS.typesafe.envKey];
+  const openrouter = env[PROVIDERS.openrouter.envKey];
+  const opencode = env[PROVIDERS.opencode.envKey];
+  if (openrouter?.startsWith(OPENROUTER_KEY_PREFIX)) return openrouter;
+  if (typesafe?.startsWith(OPENROUTER_KEY_PREFIX)) return typesafe;
+  if (opencode?.startsWith(OPENROUTER_KEY_PREFIX)) return opencode;
+  return openrouter || undefined;
 }
 
 export interface JevEndpoint {
