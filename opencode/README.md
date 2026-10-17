@@ -24,7 +24,10 @@ string). So the plugin works differently from the Claude Code hook:
   a call it has not been asked about; a kept call can be dropped by a later
   pass, a dropped one never comes back. Because the model then sees the
   pruned history, its reported usage stays low and OpenCode's own
-  auto-compaction rarely triggers. Nothing is rewritten in the session store;
+  auto-compaction rarely triggers. Only tool calls are candidates here:
+  the library's text-block removal and reply abridging are left out so the
+  remembered per-session state stays in step with what Jev was asked.
+  Nothing is rewritten in the session store;
   decisions are held in memory and recomputed after a restart.
 - **Verbatim checkpoint (OpenCode 2 only).** When OpenCode 2 does compact, its
   `compaction` session hook lets a plugin supply the summary and skip the
@@ -99,3 +102,6 @@ and the default is used.
   and tool results reach the summary.
 - Decisions are remembered per session in memory only; a restart recomputes
   them, and a call Jev dropped stays dropped for the rest of the session.
+- The `requireKeepSignal` guard (Claude Code, omp) does not exist here:
+  pruning is continuous, so a pass where Jev drops every call it judged is
+  still applied. Set `keepThreshold` higher to make Jev keep more.

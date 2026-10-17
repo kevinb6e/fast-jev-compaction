@@ -18,6 +18,7 @@ import {
   renderTranscript,
   SessionPruner,
   transcriptTokens,
+  type PruneOutcome,
 } from './pruner.js';
 
 export type ContextEvent = SessionHooks['context'];
@@ -277,7 +278,9 @@ export const setup: Plugin['setup'] = async (ctx) => {
         log(`${event.sessionID}: ${describeOutcome(outcome)}${dropped.length > 0 ? ` Dropped: ${dropped.join(', ')}` : ''}`);
       }
     } catch (error) {
-      log(`${event.sessionID}: left the history alone (${errorMessage(error)})`);
+      log(`${event.sessionID}: left the history alone (${
+        error instanceof Error ? error.message : String(error)
+      })`);
     }
   });
 
@@ -317,7 +320,9 @@ export const setup: Plugin['setup'] = async (ctx) => {
         `${event.sessionID}: verbatim checkpoint, no summary (~${tokens} tokens; ${describeOutcome(outcome)})`,
       );
     } catch (error) {
-      log(`${event.sessionID}: built-in summary (${errorMessage(error)})`);
+      log(`${event.sessionID}: built-in summary (${
+        error instanceof Error ? error.message : String(error)
+      })`);
     }
   });
 };

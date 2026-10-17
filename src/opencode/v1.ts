@@ -17,6 +17,7 @@ import {
   missingKey,
   readPrunerOptions,
   SessionPruner,
+  type PruneOutcome,
 } from './pruner.js';
 
 type Transform = NonNullable<Hooks['experimental.chat.messages.transform']>;

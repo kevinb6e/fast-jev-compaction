@@ -1115,6 +1115,22 @@ function replace(target, next) {
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
+function getDroppedCallTools(transcript, outcome) {
+  const dropped = [];
+  outcome.actions.forEach((action, callID) => {
+    if (action !== "drop_call") return;
+    for (const msg of transcript.messages) {
+      if (msg.role !== "assistant") continue;
+      for (const tu of msg.toolUses ?? []) {
+        if (tu.tool_use_id === callID) {
+          dropped.push(tu.tool);
+          return;
+        }
+      }
+    }
+  });
+  return dropped;
+}
 var server = async (input, options) => {
   const config = readPrunerOptions(options ?? {});
   const log2 = (level, message) => Promise.resolve(
@@ -1160,7 +1176,8 @@ var server = async (input, options) => {
           );
         }
         if (outcome.reason === "pruned") {
-          const text = describeOutcome(outcome);
+          const dropped = getDroppedCallTools(transcript, outcome);
+          const text = describeOutcome(outcome) + (dropped.length > 0 ? ` Dropped: ${dropped.join(", ")}` : "");
           await log2("info", text);
           await toast(text);
         }
@@ -1312,8 +1329,21 @@ function applyToMessages(messages, actions, headChars) {
   }
   return out;
 }
-function errorMessage2(error) {
-  return error instanceof Error ? error.message : String(error);
+function getDroppedCallToolsV2(transcript, outcome) {
+  const dropped = [];
+  outcome.actions.forEach((action, callID) => {
+    if (action !== "drop_call") return;
+    for (const msg of transcript.messages) {
+      if (msg.role !== "assistant") continue;
+      for (const tu of msg.toolUses ?? []) {
+        if (tu.tool_use_id === callID) {
+          dropped.push(tu.tool);
+          return;
+        }
+      }
+    }
+  });
+  return dropped;
 }
 function log(message) {
   console.log(`[fast-jev-compaction] ${message}`);
@@ -1343,9 +1373,12 @@ var setup = async (ctx) => {
       if (outcome.actions.size > 0) {
         event.messages = applyToMessages(event.messages, outcome.actions, config.truncateHeadChars);
       }
-      if (outcome.reason === "pruned") log(`${event.sessionID}: ${describeOutcome(outcome)}`);
+      if (outcome.reason === "pruned") {
+        const dropped = getDroppedCallToolsV2(transcript, outcome);
+        log(`${event.sessionID}: ${describeOutcome(outcome)}${dropped.length > 0 ? ` Dropped: ${dropped.join(", ")}` : ""}`);
+      }
     } catch (error) {
-      log(`${event.sessionID}: left the history alone (${errorMessage2(error)})`);
+      log(`${event.sessionID}: left the history alone (${error instanceof Error ? error.message : String(error)})`);
     }
   });
   await ctx.session.hook("compaction", async (event) => {
@@ -1375,7 +1408,8 @@ ${renderTranscript(pruned)}`,
           "fast-jev-compaction": {
             tokens,
             messages: pruned.length,
-            ...outcome.result ? outcome.result.stats : {}
+            ...outcome.result ? outcome.result.stats : {},
+            droppedTools: getDroppedCallToolsV2(transcript, outcome)
           }
         }
       };
@@ -1383,7 +1417,7 @@ ${renderTranscript(pruned)}`,
         `${event.sessionID}: verbatim checkpoint, no summary (~${tokens} tokens; ${describeOutcome(outcome)})`
       );
     } catch (error) {
-      log(`${event.sessionID}: built-in summary (${errorMessage2(error)})`);
+      log(`${event.sessionID}: built-in summary (${error instanceof Error ? error.message : String(error)})`);
     }
   });
 };

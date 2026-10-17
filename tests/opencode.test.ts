@@ -375,7 +375,7 @@ describe('OpenCode 1 adapter', () => {
       expect(logs).toHaveLength(2);
       expect(logs[0]).toBe('Jev compaction enabled: jev-latest at TypeSafe (with key)');
       expect(toasts).toEqual([logs[1]]);
-      expect(logs[1]).toMatch(/^2 kept, 1 calls dropped; ~\d+ → ~\d+ tokens \(threshold 60\) in 1 request\(s\)$/);
+      expect(logs[1]).toMatch(/^2 kept, 1 calls dropped; ~\d+ → ~\d+ tokens \(threshold 60\) in 1 request\(s\) Dropped: read$/);
 
       // Second request: the remembered action is re-applied without asking again.
       const again = { messages: v1Messages() };

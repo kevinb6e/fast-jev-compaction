@@ -31,8 +31,10 @@ Each adapter is a thin layer over the shared core. It hands the harness's
 compaction hook a Jev-pruned transcript, and steps aside — leaving the
 harness's own summarizer to run — when Jev fails, the history is too short to
 shrink, the reduction is below `minReductionRatio`, or Jev kept none of the
-calls it judged while the `requireKeepSignal` guard is on (the guard is off by
-default in every adapter). Nothing about the
+calls it judged while the `requireKeepSignal` guard is on (the guard is off
+by default in the Claude Code and omp adapters; the OpenCode plugin does not
+have it — its pruning is continuous, so there is no result to fall back
+from). Nothing about the
 adapter changes the scoring; see [How it works](#how-it-works).
 
 | Harness | Entry point | Installed as |
