@@ -17,9 +17,11 @@ import {
   defaultModelFor,
   endpointHost,
   environmentEndpoint,
+  environmentModel,
   isJevProvider,
   missingApiKeyError,
   parseJevResponse,
+  MODEL_ENV_KEY,
   PROVIDER_OVERRIDE_ENV_KEY,
   PROVIDERS,
   resolveJevEndpoint,
@@ -430,7 +432,7 @@ export async function getCredentials(
     settings: { read: () => Promise<Readonly<Record<string, unknown>>> };
   },
   config: HookConfig,
-): Promise<{ apiKey?: string; provider: JevProvider; baseUrl?: string }> {
+): Promise<{ apiKey?: string; provider: JevProvider; baseUrl?: string; model?: string }> {
   const settings = await $.settings.read();
   const settingsEnv = settings['env'];
   const fromSettings = (name: string): string | undefined => {
@@ -460,6 +462,7 @@ export async function getCredentials(
     ),
     JEV_BASE_URL: prefer(await $.env.get('JEV_BASE_URL'), 'JEV_BASE_URL'),
     TYPESAFE_BASE_URL: prefer(await $.env.get('TYPESAFE_BASE_URL'), 'TYPESAFE_BASE_URL'),
+    [MODEL_ENV_KEY]: prefer(await $.env.get('FAST_JEV_MODEL'), 'FAST_JEV_MODEL'),
   };
   const override = env[PROVIDER_OVERRIDE_ENV_KEY];
   // A supplied key pins the endpoint; an implicit one is found through `env`.
@@ -474,10 +477,15 @@ export async function getCredentials(
   // A configured endpoint wins; otherwise the environment decides where the
   // transcript goes, which is why the outcome line names the host.
   const baseUrl = config.baseUrl ?? environmentEndpoint(env, provider);
+  // A configured model already flows through `config`, so it is only echoed
+  // back when it comes from the environment; that keeps the spread at the call
+  // site from clobbering a configured value with an `undefined`.
+  const model = config.model === undefined ? environmentModel(env) : undefined;
   return {
     ...(apiKey ? { apiKey } : {}),
     provider,
     ...(baseUrl ? { baseUrl } : {}),
+    ...(model ? { model } : {}),
   };
 }
 

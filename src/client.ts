@@ -1,6 +1,8 @@
 import {
   apiKeyFor,
   buildJevRequest,
+  environmentEndpoint,
+  environmentModel,
   missingApiKeyError,
   parseJevResponse,
   resolveJevProvider,
@@ -41,8 +43,11 @@ export class JevClient implements JevAsker {
       options.apiKey === undefined ? env : undefined,
     );
     this.apiKey = options.apiKey ?? apiKeyFor(this.provider, env) ?? '';
-    this.model = options.model;
-    this.baseUrl = options.baseUrl;
+    // The environment names the model (`FAST_JEV_MODEL`, as omp and the
+    // OpenCode adapter already do) and the endpoint (`JEV_BASE_URL` /
+    // `TYPESAFE_BASE_URL`); an explicit option still wins over each.
+    this.model = options.model ?? environmentModel(env);
+    this.baseUrl = options.baseUrl ?? environmentEndpoint(env, this.provider);
     this.fetcher = options.fetch ?? fetch;
   }
 

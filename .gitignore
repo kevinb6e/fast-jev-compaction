@@ -3,3 +3,8 @@ dist
 .env
 demo/JevDemo/build
 codedb.snapshot
+
+# Local debug / audit scratch
+.audit/
+run_test_debug.sh
+vitest.config.local.ts

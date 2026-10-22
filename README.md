@@ -246,8 +246,9 @@ OpenCode), then the resolved provider's own variable.
 OpenCode), then `JEV_BASE_URL`, then `TYPESAFE_BASE_URL`, then the provider's own
 URL.
 
-**Model** — an explicit `model` option (or `FAST_JEV_MODEL` in omp and
-OpenCode), then the resolved provider's default.
+**Model** — an explicit `model` option (or `FAST_JEV_MODEL`, which every host
+now reads: the library, the Claude Code hook, omp and OpenCode), then the
+resolved provider's default.
 
 The model IDs are `jev-latest`, `jev-1.13`, `jev-1.13-free` (Zen's free model)
 and, on OpenRouter, `typesafe/jev-1.13`.

@@ -641,6 +641,83 @@ describe('HTTP client', () => {
   });
 });
 
+describe('client endpoint from the environment', () => {
+  it('sends to the endpoint the environment names when no baseUrl is given', async () => {
+    // The README's Endpoint rule lists JEV_BASE_URL and TYPESAFE_BASE_URL for
+    // every host; the client resolves the provider and key from `env`, so the
+    // endpoint has to come from the same place.
+    const urls: string[] = [];
+    const fetcher = (async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return { status: 200, ok: true, text: async () => JSON.stringify({ answers: {} }) };
+    }) as unknown as typeof fetch;
+    const full = new JevClient({
+      apiKey: 'k',
+      env: { JEV_BASE_URL: 'https://jev.local/systemone' },
+      fetch: fetcher,
+    });
+    await full.ask('s', {});
+    expect(urls[0]).toBe('https://jev.local/systemone');
+
+    const host = new JevClient({
+      apiKey: 'k',
+      env: { TYPESAFE_BASE_URL: 'https://engine.local' },
+      fetch: fetcher,
+    });
+    await host.ask('s', {});
+    expect(urls[1]).toBe('https://engine.local/v1/systemone');
+
+    // An explicit baseUrl still wins over the environment.
+    const explicit = new JevClient({
+      apiKey: 'k',
+      baseUrl: 'https://explicit.local',
+      env: { JEV_BASE_URL: 'https://jev.local/systemone' },
+      fetch: fetcher,
+    });
+    await explicit.ask('s', {});
+    expect(urls[2]).toBe('https://explicit.local');
+  });
+
+  it('keeps the OpenRouter route when only TYPESAFE_BASE_URL is set', async () => {
+    // The key must meet its own route: an env host for TypeSafe cannot pull an
+    // OpenRouter request off OpenRouter.
+    const urls: string[] = [];
+    const fetcher = (async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return { status: 200, ok: true, text: async () => JSON.stringify({ answers: {} }) };
+    }) as unknown as typeof fetch;
+    const client = new JevClient({
+      env: { OPENROUTER_API_KEY: 'sk-or-v1-abc', TYPESAFE_BASE_URL: 'https://engine.local' },
+      fetch: fetcher,
+    });
+    await client.ask('s', {});
+    expect(urls[0]).toBe('https://openrouter.ai/api/v1/systemone');
+  });
+
+  it('takes the model from FAST_JEV_MODEL, and the explicit option wins over it', async () => {
+    // The library is the one surface whose model cannot be switched from the
+    // environment today, although omp and the OpenCode adapter both read it.
+    const bodies: string[] = [];
+    const fetcher = (async (_url: string | URL | Request, init?: { body?: BodyInit | null }) => {
+      bodies.push(String(init?.body));
+      return { status: 200, ok: true, text: async () => JSON.stringify({ answers: {} }) };
+    }) as unknown as typeof fetch;
+    await new JevClient({
+      env: { FAST_JEV_PROVIDER: 'opencode', FAST_JEV_MODEL: 'typesafe/jev-1.13', OPENCODE_API_KEY: 'oc' },
+      fetch: fetcher,
+    }).ask('s', {});
+    expect(JSON.parse(bodies[0]!).model).toBe('typesafe/jev-1.13');
+
+    await new JevClient({
+      apiKey: 'k',
+      model: 'jev-option',
+      env: { FAST_JEV_MODEL: 'jev-env' },
+      fetch: fetcher,
+    }).ask('s', {});
+    expect(JSON.parse(bodies[1]!).model).toBe('jev-option');
+  });
+});
+
 describe('keyless endpoints', () => {
   it('sends no authorization header without a key and only requires one for keyed providers', async () => {
     const request = buildJevRequest({ apiKey: '', baseUrl: 'https://opencode.ai/zen/v1/systemone', model: 'jev-1.13-free' }, 's', {});

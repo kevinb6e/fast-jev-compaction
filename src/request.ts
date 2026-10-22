@@ -178,6 +178,9 @@ export const ENDPOINT_ENV_KEYS = {
   host: 'TYPESAFE_BASE_URL',
 } as const;
 
+/** The variable that names the Jev model for every host, read literally by the hook. */
+export const MODEL_ENV_KEY = 'FAST_JEV_MODEL';
+
 /**
  * The endpoint the environment asks for: `JEV_BASE_URL` is a whole endpoint URL,
  * `TYPESAFE_BASE_URL` is the host form TypeSafe's own SDKs take, so the System
@@ -196,6 +199,16 @@ export function environmentEndpoint(
   const base = env[ENDPOINT_ENV_KEYS.host]?.replace(/\/+$/, '');
   if (!base) return undefined;
   return base.endsWith('/v1/systemone') ? base : `${base}/v1/systemone`;
+}
+
+/**
+ * The model the environment asks for: `FAST_JEV_MODEL`, the same variable omp
+ * and the OpenCode adapter read. An explicit model option still wins over it.
+ */
+export function environmentModel(
+  env: Record<string, string | undefined> = {},
+): string | undefined {
+  return env[MODEL_ENV_KEY] || undefined;
 }
 
 /**

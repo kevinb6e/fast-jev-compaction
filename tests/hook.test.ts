@@ -20,6 +20,7 @@ import {
   decideCall,
   endpointHost,
   ENDPOINT_ENV_KEYS,
+  MODEL_ENV_KEY,
   PROVIDER_ENV_KEYS,
   PROVIDER_OVERRIDE_ENV_KEY,
   type Message,
@@ -91,6 +92,7 @@ describe('getCredentials', () => {
     const named = [
       ...Object.values(PROVIDER_ENV_KEYS),
       ...Object.values(ENDPOINT_ENV_KEYS),
+      MODEL_ENV_KEY,
       PROVIDER_OVERRIDE_ENV_KEY,
     ];
     expect([...asked].sort()).toEqual([...new Set(named)].sort());
@@ -220,6 +222,33 @@ describe('endpoint from the environment', () => {
       { ...base, baseUrl: 'https://configured.local' },
     );
     expect(credentials.baseUrl).toBe('https://configured.local');
+  });
+
+  it('takes the model from FAST_JEV_MODEL, engine environment first', async () => {
+    // The README's Model rule promises the variable for every host; the hook
+    // reads its environment literally, so the name has to be spelled out.
+    const engine = await getCredentials(
+      host({ FAST_JEV_MODEL: 'typesafe/jev-1.13', TYPESAFE_API_KEY: 't' }) as never,
+      base,
+    );
+    expect(engine.model).toBe('typesafe/jev-1.13');
+
+    const settings = await getCredentials(
+      {
+        env: { get: async () => undefined },
+        settings: { read: async () => ({ env: { FAST_JEV_MODEL: 'jev-1.13' } }) },
+      } as never,
+      base,
+    );
+    expect(settings.model).toBe('jev-1.13');
+  });
+
+  it('lets a configured model win over FAST_JEV_MODEL', async () => {
+    const credentials = await getCredentials(
+      host({ FAST_JEV_MODEL: 'jev-env' }) as never,
+      { ...base, model: 'jev-config' },
+    );
+    expect(credentials.model).toBeUndefined();
   });
 
   it('sends the request to that endpoint and names it in the summary', async () => {

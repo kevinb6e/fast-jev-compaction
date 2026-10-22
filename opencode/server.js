@@ -65,6 +65,22 @@ function apiKeyFor(provider, env) {
   if (opencode?.startsWith(OPENROUTER_KEY_PREFIX)) return opencode;
   return openrouter || void 0;
 }
+var ENDPOINT_ENV_KEYS = {
+  full: "JEV_BASE_URL",
+  host: "TYPESAFE_BASE_URL"
+};
+var MODEL_ENV_KEY = "FAST_JEV_MODEL";
+function environmentEndpoint(env = {}, provider) {
+  const full = env[ENDPOINT_ENV_KEYS.full];
+  if (full) return full;
+  if (provider && provider !== "typesafe") return void 0;
+  const base = env[ENDPOINT_ENV_KEYS.host]?.replace(/\/+$/, "");
+  if (!base) return void 0;
+  return base.endsWith("/v1/systemone") ? base : `${base}/v1/systemone`;
+}
+function environmentModel(env = {}) {
+  return env[MODEL_ENV_KEY] || void 0;
+}
 function buildJevRequest(params, state, questions) {
   return {
     url: params.baseUrl ?? PROVIDERS[params.provider ?? "typesafe"].url,
@@ -803,8 +819,8 @@ var JevClient = class {
       options.apiKey === void 0 ? env : void 0
     );
     this.apiKey = options.apiKey ?? apiKeyFor(this.provider, env) ?? "";
-    this.model = options.model;
-    this.baseUrl = options.baseUrl;
+    this.model = options.model ?? environmentModel(env);
+    this.baseUrl = options.baseUrl ?? environmentEndpoint(env, this.provider);
     this.fetcher = options.fetch ?? fetch;
   }
   /** The provider this client resolves to, for logs and error messages. */
