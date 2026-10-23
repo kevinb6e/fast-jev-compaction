@@ -9,6 +9,7 @@ import type {
 } from 'claude-code';
 
 import { compact, hasKeepSignal, reductionRatio, resolveOptions } from '../src/compact.js';
+import { BOOL_ENV, envOverrides, NUMERIC_ENV } from '../src/env-config.js';
 import { renderTranscript } from '../src/render.js';
 import { estimateTokens } from '../src/state.js';
 import {
@@ -72,23 +73,34 @@ export type HookConfig = CompactOptions & {
   metricsPath?: string;
 };
 
-function optionNumber(options: PluginOptions, key: string, fallback: number): number {
-  const value = options[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
 function optionString(options: PluginOptions, key: string): string | undefined {
   const value = options[key];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function optionBool(options: PluginOptions, key: string, fallback: boolean): boolean {
-  const value = options[key];
-  return typeof value === 'boolean' ? value : fallback;
-}
-
-/** Reads the plugin's `userConfig` values; anything missing takes the defaults. */
-export function resolveHookConfig(options: PluginOptions): HookConfig {
+/**
+ * Reads the plugin's `userConfig` values, then the `FAST_JEV_*` environment, then
+ * the defaults, so one exported block in a shell profile tunes every harness.
+ * `env` is the environment record (the hook builds it from `readEnvConfig`, which
+ * spells the literal names the engine requires); an empty record leaves parity off.
+ */
+export function resolveHookConfig(
+  options: PluginOptions,
+  env: Readonly<Record<string, string | undefined>> = {},
+): HookConfig {
+  const over = envOverrides(env);
+  const num = (key: string, fallback: number): number => {
+    const option = options[key];
+    if (typeof option === 'number' && Number.isFinite(option)) return option;
+    const fromEnv = over[key];
+    return typeof fromEnv === 'number' ? fromEnv : fallback;
+  };
+  const bool = (key: string, fallback: boolean): boolean => {
+    const option = options[key];
+    if (typeof option === 'boolean') return option;
+    const fromEnv = over[key];
+    return typeof fromEnv === 'boolean' ? fromEnv : fallback;
+  };
   const numbers: Partial<Omit<CompactOptions, 'goal'>> = {};
   for (const key of [
     'keepThreshold',
@@ -99,27 +111,16 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
     'injectedMinChars',
     'replyMinChars',
   ] as const) {
-    const value = options[key];
-    if (typeof value === 'number' && Number.isFinite(value)) numbers[key] = value;
+    const option = options[key];
+    if (typeof option === 'number' && Number.isFinite(option)) numbers[key] = option;
+    else if (typeof over[key] === 'number') numbers[key] = over[key] as number;
   }
   const config: HookConfig = {
     ...numbers,
-    compactAtPercent: optionNumber(options, 'compactAtPercent', HOOK_DEFAULTS.compactAtPercent),
-    minReductionRatio: optionNumber(
-      options,
-      'minReductionRatio',
-      HOOK_DEFAULTS.minReductionRatio,
-    ),
-    requireKeepSignal: optionBool(
-      options,
-      'requireKeepSignal',
-      HOOK_DEFAULTS.requireKeepSignal,
-    ),
-    measureNativeSummary: optionBool(
-      options,
-      'measureNativeSummary',
-      HOOK_DEFAULTS.measureNativeSummary,
-    ),
+    compactAtPercent: num('compactAtPercent', HOOK_DEFAULTS.compactAtPercent),
+    minReductionRatio: num('minReductionRatio', HOOK_DEFAULTS.minReductionRatio),
+    requireKeepSignal: bool('requireKeepSignal', HOOK_DEFAULTS.requireKeepSignal),
+    measureNativeSummary: bool('measureNativeSummary', HOOK_DEFAULTS.measureNativeSummary),
   };
   const model = optionString(options, 'model');
   if (model) config.model = model;
@@ -134,6 +135,37 @@ export function resolveHookConfig(options: PluginOptions): HookConfig {
   const goal = optionString(options, 'goal');
   if (goal) config.goal = goal;
   return config;
+}
+
+/**
+ * Pull every `FAST_JEV_*` threshold through the engine's `$.env.get`. The names
+ * are spelled as literals (not computed in a loop) because the engine lists a
+ * module's environment reads by reading its source, so it refuses a computed
+ * name - the same rule that pins the provider reads in `getCredentials`.
+ */
+export async function readEnvConfig($: {
+  env: { get: (name: string) => Promise<string | undefined> };
+}): Promise<Record<string, string | undefined>> {
+  const read = async (name: string): Promise<string | undefined> => {
+    try {
+      return await $.env.get(name);
+    } catch {
+      return undefined;
+    }
+  };
+  return {
+    FAST_JEV_KEEP_THRESHOLD: await read('FAST_JEV_KEEP_THRESHOLD'),
+    FAST_JEV_PRESERVE_RECENT: await read('FAST_JEV_PRESERVE_RECENT'),
+    FAST_JEV_MAX_STATE_TOKENS: await read('FAST_JEV_MAX_STATE_TOKENS'),
+    FAST_JEV_MAX_REQUEST_TOKENS: await read('FAST_JEV_MAX_REQUEST_TOKENS'),
+    FAST_JEV_TRUNCATE_HEAD_CHARS: await read('FAST_JEV_TRUNCATE_HEAD_CHARS'),
+    FAST_JEV_INJECTED_MIN_CHARS: await read('FAST_JEV_INJECTED_MIN_CHARS'),
+    FAST_JEV_REPLY_MIN_CHARS: await read('FAST_JEV_REPLY_MIN_CHARS'),
+    FAST_JEV_COMPACT_AT_PERCENT: await read('FAST_JEV_COMPACT_AT_PERCENT'),
+    FAST_JEV_MIN_REDUCTION: await read('FAST_JEV_MIN_REDUCTION'),
+    FAST_JEV_REQUIRE_KEEP_SIGNAL: await read('FAST_JEV_REQUIRE_KEEP_SIGNAL'),
+    FAST_JEV_MEASURE_NATIVE_SUMMARY: await read('FAST_JEV_MEASURE_NATIVE_SUMMARY'),
+  };
 }
 
 /** A `JevAsker` over the engine's `$.http.fetch`. */
@@ -532,10 +564,10 @@ async function contextFigures($: {
 }
 
 export const register: Register = (on: On, options: PluginOptions) => {
-  const configured = resolveHookConfig(options);
   let compacting = false;
 
   on('session.compact', async ($, event, next) => {
+    const configured = resolveHookConfig(options, await readEnvConfig($));
     const started = Date.now();
     const at = new Date().toISOString();
     const usage = await contextFigures($);
@@ -639,6 +671,7 @@ export const register: Register = (on: On, options: PluginOptions) => {
 
   on('turn.complete', async ($, event: TurnCompleteInput, next) => {
     if (compacting) return next(event);
+    const configured = resolveHookConfig(options, await readEnvConfig($));
     try {
       const { context } = await $.session.usage();
       if ((context.percent ?? 0) < configured.compactAtPercent) return next(event);

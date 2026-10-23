@@ -1,5 +1,6 @@
 import { JevClient } from '../client.js';
 import { applyActions, compact, resolveOptions } from '../compact.js';
+import { envOverrides } from '../env-config.js';
 import {
   apiKeyFor,
   inferJevProvider,
@@ -104,6 +105,15 @@ export function readPrunerOptions(
   for (const key of NUMBER_KEYS) {
     const value = options[key];
     if (typeof value === 'number' && Number.isFinite(value)) numbers[key] = value;
+  }
+  // Parity with omp: a plugin that takes no options (a directory install) still
+  // reads the shared `FAST_JEV_*` names. An explicit option always wins, so the
+  // environment only fills the keys the options bag left unset.
+  const over = envOverrides(env);
+  for (const key of NUMBER_KEYS) {
+    if (key in numbers) continue;
+    const fromEnv = over[key];
+    if (typeof fromEnv === 'number') numbers[key] = fromEnv;
   }
   const string = (key: string): string | undefined => {
     const value = options[key];

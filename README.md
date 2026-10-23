@@ -257,6 +257,40 @@ and, on OpenRouter, `typesafe/jev-1.13`.
 exported for another tool sends it there; every host names the endpoint host in
 its outcome line, so the destination is visible.
 
+## Tuning every harness from one place
+
+The scoring knobs (`FAST_JEV_*`) are now read by **every** adapter, not only omp,
+so one block in a shell profile (`~/.zshrc`) tunes Claude Code, omp, OpenCode and
+the Pi port alike. Precedence is always: **the harness's own option** (Claude Code
+`userConfig`, OpenCode plugin `options`, Pi `settings.json`, omp has none) **wins,
+then the environment, then the built-in default**.
+
+| Variable | Knob (default) |
+| --- | --- |
+| `FAST_JEV_KEEP_THRESHOLD` | keep probability (`0.5`) |
+| `FAST_JEV_PRESERVE_RECENT` | newest messages pinned (`6`) |
+| `FAST_JEV_MIN_REDUCTION` | min shrink before fallback (`0.25`; not OpenCode, which prunes continuously) |
+| `FAST_JEV_COMPACT_AT_PERCENT` | auto-compact context percent (`60`) |
+| `FAST_JEV_MAX_STATE_TOKENS` | state budget (`25000`) |
+| `FAST_JEV_MAX_REQUEST_TOKENS` | request budget (`30000`) |
+| `FAST_JEV_TRUNCATE_HEAD_CHARS` | tool-result head kept (`300`) |
+| `FAST_JEV_INJECTED_MIN_CHARS` / `FAST_JEV_REPLY_MIN_CHARS` | text-block floors (library) |
+| `FAST_JEV_MAX_SUMMARY_TOKENS` | summary ceiling (`16384`; omp/Claude Code) |
+| `FAST_JEV_COOLDOWN_TOKENS` | Pi port cooldown (`8000`) |
+| `FAST_JEV_REQUIRE_KEEP_SIGNAL` | refuse an all-drop run (`false`; `true/1/yes`) |
+| `FAST_JEV_MEASURE_NATIVE_SUMMARY` | also run the host summarizer to compare (`false`; Claude Code) |
+
+```sh
+# one place for Claude Code, omp, OpenCode and Pi
+export FAST_JEV_MIN_REDUCTION=0.1
+export FAST_JEV_PRESERVE_RECENT=2
+export FAST_JEV_KEEP_THRESHOLD=0.4
+```
+
+A malformed or out-of-range value is ignored and the default stands, so a typo
+cannot silently misbehave. `src/env-config.ts` is the single source of truth for
+the names; a parity test pins omp's hard-coded list to it.
+
 ## Choosing a decision model
 
 Jev is one decision model among many. OpenRouter serves a whole class of them

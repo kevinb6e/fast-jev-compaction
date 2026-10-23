@@ -661,3 +661,28 @@ describe('server entry', () => {
     expect(server.setup).toBe(v2.setup);
   });
 });
+
+describe('pruner options from the environment (parity B)', () => {
+  it('falls back to FAST_JEV_* when the plugin options omit a knob', () => {
+    const opts = readPrunerOptions(
+      { apiKey: 'sk-or-v1-abc' },
+      { FAST_JEV_KEEP_THRESHOLD: '0.4', FAST_JEV_PRESERVE_RECENT: '2', FAST_JEV_TRUNCATE_HEAD_CHARS: '150' },
+    );
+    expect(opts.keepThreshold).toBe(0.4);
+    expect(opts.preserveRecentMessages).toBe(2);
+    expect(opts.truncateHeadChars).toBe(150);
+  });
+
+  it('lets a plugin option win over the environment', () => {
+    const opts = readPrunerOptions(
+      { apiKey: 'sk-or-v1-abc', preserveRecentMessages: 8 },
+      { FAST_JEV_PRESERVE_RECENT: '2' },
+    );
+    expect(opts.preserveRecentMessages).toBe(8);
+  });
+
+  it('leaves the built-in default when neither option nor environment sets it', () => {
+    const opts = readPrunerOptions({ apiKey: 'sk-or-v1-abc' }, { FAST_JEV_KEEP_THRESHOLD: 'garbage' });
+    expect(opts.keepThreshold).toBe(0.5);
+  });
+});

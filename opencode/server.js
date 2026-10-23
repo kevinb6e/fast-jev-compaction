@@ -850,6 +850,48 @@ var JevClient = class {
   }
 };
 
+// src/env-config.ts
+var NUMERIC_ENV = [
+  ["FAST_JEV_KEEP_THRESHOLD", "keepThreshold"],
+  ["FAST_JEV_PRESERVE_RECENT", "preserveRecentMessages"],
+  ["FAST_JEV_MAX_STATE_TOKENS", "maxStateTokens"],
+  ["FAST_JEV_MAX_REQUEST_TOKENS", "maxRequestTokens"],
+  ["FAST_JEV_TRUNCATE_HEAD_CHARS", "truncateHeadChars"],
+  ["FAST_JEV_INJECTED_MIN_CHARS", "injectedMinChars"],
+  ["FAST_JEV_REPLY_MIN_CHARS", "replyMinChars"],
+  ["FAST_JEV_COMPACT_AT_PERCENT", "compactAtPercent"],
+  ["FAST_JEV_MIN_REDUCTION", "minReductionRatio"],
+  ["FAST_JEV_MAX_SUMMARY_TOKENS", "maxSummaryTokens"],
+  ["FAST_JEV_COOLDOWN_TOKENS", "cooldownTokens"]
+];
+var BOOL_ENV = [
+  ["FAST_JEV_REQUIRE_KEEP_SIGNAL", "requireKeepSignal"],
+  ["FAST_JEV_MEASURE_NATIVE_SUMMARY", "measureNativeSummary"]
+];
+function envNumber(value) {
+  if (value === void 0 || value.trim() === "") return void 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : void 0;
+}
+function envBool(value) {
+  const text = value?.trim().toLowerCase();
+  if (text === "1" || text === "true" || text === "yes") return true;
+  if (text === "0" || text === "false" || text === "no") return false;
+  return void 0;
+}
+function envOverrides(env) {
+  const out = {};
+  for (const [name, key] of NUMERIC_ENV) {
+    const value = envNumber(env[name]);
+    if (value !== void 0) out[key] = value;
+  }
+  for (const [name, key] of BOOL_ENV) {
+    const value = envBool(env[name]);
+    if (value !== void 0) out[key] = value;
+  }
+  return out;
+}
+
 // src/opencode/pruner.ts
 var PRUNER_DEFAULTS = {
   compactAtPercent: 60,
@@ -873,6 +915,12 @@ function readPrunerOptions(options = {}, env = process.env) {
   for (const key of NUMBER_KEYS) {
     const value = options[key];
     if (typeof value === "number" && Number.isFinite(value)) numbers[key] = value;
+  }
+  const over = envOverrides(env);
+  for (const key of NUMBER_KEYS) {
+    if (key in numbers) continue;
+    const fromEnv = over[key];
+    if (typeof fromEnv === "number") numbers[key] = fromEnv;
   }
   const string = (key) => {
     const value = options[key];

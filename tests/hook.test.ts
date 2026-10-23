@@ -8,6 +8,7 @@ import {
   hookFallbackReason,
   logMeasurement,
   measurementOf,
+  readEnvConfig,
   register,
   resolveHookConfig,
   summarize,
@@ -372,5 +373,54 @@ describe('OpenCode Zen by explicit configuration', () => {
     // A supplied key is carried, and reaches its own endpoint.
     const keyed = { ...base, provider: 'zen' as const, apiKey: 'k' };
     expect(await asked(keyed)).toBe('https://opencode.ai/zen/v1/systemone');
+  });
+});
+
+describe('hook config from the environment (parity B)', () => {
+  it('falls back to FAST_JEV_* when userConfig omits a knob', () => {
+    const config = resolveHookConfig(
+      {},
+      { FAST_JEV_MIN_REDUCTION: '0.1', FAST_JEV_PRESERVE_RECENT: '2', FAST_JEV_KEEP_THRESHOLD: '0.4' },
+    );
+    expect(config.minReductionRatio).toBe(0.1);
+    expect(config.preserveRecentMessages).toBe(2);
+    expect(config.keepThreshold).toBe(0.4);
+  });
+
+  it('lets a userConfig option win over the environment', () => {
+    const config = resolveHookConfig(
+      { minReductionRatio: 0.3, compactAtPercent: 50 },
+      { FAST_JEV_MIN_REDUCTION: '0.1', FAST_JEV_COMPACT_AT_PERCENT: '90' },
+    );
+    expect(config.minReductionRatio).toBe(0.3);
+    expect(config.compactAtPercent).toBe(50);
+  });
+
+  it('reads the boolean knobs from the environment', () => {
+    expect(resolveHookConfig({}, { FAST_JEV_REQUIRE_KEEP_SIGNAL: 'true' }).requireKeepSignal).toBe(true);
+    expect(
+      resolveHookConfig({}, { FAST_JEV_MEASURE_NATIVE_SUMMARY: 'yes' }).measureNativeSummary,
+    ).toBe(true);
+  });
+
+  it('still defaults when neither option nor environment sets a knob', () => {
+    const config = resolveHookConfig({}, { FAST_JEV_MIN_REDUCTION: 'not-a-number' });
+    expect(config.minReductionRatio).toBe(0.25);
+  });
+
+  it('readEnvConfig pulls every FAST_JEV_* threshold through the literal env getter', async () => {
+    const values: Record<string, string> = {
+      FAST_JEV_MIN_REDUCTION: '0.1',
+      FAST_JEV_PRESERVE_RECENT: '3',
+      FAST_JEV_KEEP_THRESHOLD: '0.4',
+      FAST_JEV_REQUIRE_KEEP_SIGNAL: 'true',
+    };
+    const $ = { env: { get: async (name: string) => values[name] } };
+    const env = await readEnvConfig($ as never);
+    expect(env['FAST_JEV_MIN_REDUCTION']).toBe('0.1');
+    expect(env['FAST_JEV_PRESERVE_RECENT']).toBe('3');
+    expect(env['FAST_JEV_KEEP_THRESHOLD']).toBe('0.4');
+    expect(env['FAST_JEV_REQUIRE_KEEP_SIGNAL']).toBe('true');
+    expect(env['FAST_JEV_COOLDOWN_TOKENS']).toBeUndefined();
   });
 });
