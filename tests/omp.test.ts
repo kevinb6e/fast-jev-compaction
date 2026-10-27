@@ -219,10 +219,11 @@ describe('resolveOmpOptions', () => {
 });
 
 describe('summaryCeiling', () => {
-  it('derives 10% of the context being compacted, with a 16k floor', () => {
+  it('derives 20% of the context being compacted, with a 16k floor', () => {
     const options = resolveOmpOptions({});
-    expect(summaryCeiling(preparation({ tokensBefore: 220715 }), options)).toBe(22072);
-    expect(summaryCeiling(preparation({ tokensBefore: 323739 }), options)).toBe(32374);
+    expect(summaryCeiling(preparation({ tokensBefore: 118572 }), options)).toBe(23714);
+    expect(summaryCeiling(preparation({ tokensBefore: 220715 }), options)).toBe(44143);
+    expect(summaryCeiling(preparation({ tokensBefore: 323739 }), options)).toBe(64748);
     expect(summaryCeiling(preparation({ tokensBefore: 8000 }), options)).toBe(16384);
   });
 
@@ -386,10 +387,10 @@ describe('buildSummary', () => {
   });
 
   it('scales the ceiling with the context so a long session still compacts', async () => {
-    const words = 'word '.repeat(19_500);
+    const words = 'word '.repeat(20_800);
     const outcome = await buildSummary(
       preparation({
-        tokensBefore: 220_715,
+        tokensBefore: 118_572,
         messagesToSummarize: omp([
           user('Fix the failing test.'),
           assistant([toolCall('t1', 'Read', { file_path: 'src/b.ts' })]),

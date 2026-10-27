@@ -65,7 +65,7 @@ The extension returns `undefined`, which runs omp's own summarizer, when:
 - the reduction is below `FAST_JEV_MIN_REDUCTION` (short sessions, or a
   transcript with little to drop);
 - the rendered summary exceeds the summary ceiling: `FAST_JEV_MAX_SUMMARY_TOKENS`,
-  or by default 10% of the context being compacted with a 16k floor (the pruned
+  or by default 20% of the context being compacted with a 16k floor (the pruned
   transcript keeps every assistant turn, so its size grows with the session);
 - Jev fails (missing key, HTTP error, malformed answers).
 
@@ -88,7 +88,7 @@ summary is reported with `'info'`.
 | `FAST_JEV_TRUNCATE_HEAD_CHARS` | `300` | Characters of a dropped tool result retained before its note |
 | `FAST_JEV_MIN_REDUCTION` | `0.25` | Minimum shrink of the rendered transcript |
 | `FAST_JEV_REQUIRE_KEEP_SIGNAL` | `false` | Fall back when Jev drops every call it judged, rather than apply the largest possible reduction |
-| `FAST_JEV_MAX_SUMMARY_TOKENS` | `0` (10% of `tokensBefore`, min `16384`) | Estimated token ceiling for the summary; `0` derives it from the context being compacted, a positive value is absolute |
+| `FAST_JEV_MAX_SUMMARY_TOKENS` | `0` (20% of `tokensBefore`, min `16384`) | Estimated token ceiling for the summary; `0` derives it from the context being compacted, a positive value is absolute |
 
 Malformed values (an unknown provider, a non-numeric threshold) are ignored
 and the default is used. Options are read once when the extension loads.
