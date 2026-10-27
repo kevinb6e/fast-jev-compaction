@@ -275,7 +275,7 @@ then the environment, then the built-in default**.
 | `FAST_JEV_MAX_REQUEST_TOKENS` | request budget (`30000`) |
 | `FAST_JEV_TRUNCATE_HEAD_CHARS` | tool-result head kept (`300`) |
 | `FAST_JEV_INJECTED_MIN_CHARS` / `FAST_JEV_REPLY_MIN_CHARS` | text-block floors (library) |
-| `FAST_JEV_MAX_SUMMARY_TOKENS` | summary ceiling (`16384`; omp/Claude Code) |
+| `FAST_JEV_MAX_SUMMARY_TOKENS` | summary ceiling (`0` = 10% of the context compacted, min `16384`; omp) |
 | `FAST_JEV_COOLDOWN_TOKENS` | Pi port cooldown (`8000`) |
 | `FAST_JEV_REQUIRE_KEEP_SIGNAL` | refuse an all-drop run (`false`; `true/1/yes`) |
 | `FAST_JEV_MEASURE_NATIVE_SUMMARY` | also run the host summarizer to compare (`false`; Claude Code) |

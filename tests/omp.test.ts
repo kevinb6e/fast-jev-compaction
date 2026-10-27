@@ -6,6 +6,7 @@ import fastJevCompaction, {
   fromAgentMessages,
   handleBeforeCompact,
   resolveOmpOptions,
+  summaryCeiling,
 } from '../omp/index.ts';
 import type { JevAsker } from '../src/index.js';
 
@@ -150,7 +151,7 @@ describe('resolveOmpOptions', () => {
       model: 'jev-latest',
       minReductionRatio: 0.25,
       requireKeepSignal: false,
-      maxSummaryTokens: 16384,
+      maxSummaryTokens: 0,
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
     });
@@ -210,10 +211,25 @@ describe('resolveOmpOptions', () => {
       model: 'jev-latest',
       minReductionRatio: 0.25,
       requireKeepSignal: false,
-      maxSummaryTokens: 16384,
+      maxSummaryTokens: 0,
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
     });
+  });
+});
+
+describe('summaryCeiling', () => {
+  it('derives 10% of the context being compacted, with a 16k floor', () => {
+    const options = resolveOmpOptions({});
+    expect(summaryCeiling(preparation({ tokensBefore: 220715 }), options)).toBe(22072);
+    expect(summaryCeiling(preparation({ tokensBefore: 323739 }), options)).toBe(32374);
+    expect(summaryCeiling(preparation({ tokensBefore: 8000 }), options)).toBe(16384);
+  });
+
+  it('takes an explicit ceiling verbatim', () => {
+    const options = resolveOmpOptions({ FAST_JEV_MAX_SUMMARY_TOKENS: '24000' });
+    expect(summaryCeiling(preparation({ tokensBefore: 220715 }), options)).toBe(24000);
+    expect(summaryCeiling(preparation({ tokensBefore: 220715 }), resolveOmpOptions({ FAST_JEV_MAX_SUMMARY_TOKENS: '4096' }))).toBe(4096);
   });
 });
 
@@ -367,6 +383,26 @@ describe('buildSummary', () => {
     );
     expect(outcome.summary).toBeUndefined();
     expect(outcome.reason).toMatch(/exceeds 4/);
+  });
+
+  it('scales the ceiling with the context so a long session still compacts', async () => {
+    const words = 'word '.repeat(19_500);
+    const outcome = await buildSummary(
+      preparation({
+        tokensBefore: 220_715,
+        messagesToSummarize: omp([
+          user('Fix the failing test.'),
+          assistant([toolCall('t1', 'Read', { file_path: 'src/b.ts' })]),
+          toolResult('t1', 'Read', 'filler '.repeat(40_000)),
+          assistant([toolCall('t2', 'Write', { file_path: 'src/a.ts', content: words })]),
+          toolResult('t2', 'Write', 'wrote 1 file'),
+        ]),
+      }),
+      resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1' }),
+      asker(() => 0.1),
+    );
+    expect(outcome.summary).toBeDefined();
+    expect(outcome.reason).toBeUndefined();
   });
 });
 
