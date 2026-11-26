@@ -5,9 +5,9 @@
  * in a shell profile governs the tuning knobs everywhere.
  *
  * Precedence is always: the harness's own explicit option (userConfig / plugin
- * options / settings.json) wins, then the environment, then the built-in
- * default. The names here must match the ones `omp/index.ts` reads; the parity
- * test pins them together.
+ * options) wins, then the environment, then the built-in default. Pi and omp
+ * share an extension and read the environment. The names here must match the
+ * ones `omp/index.ts` reads; the parity test pins them together.
  */
 
 /** Numeric `FAST_JEV_*` names and the config key each one sets. */

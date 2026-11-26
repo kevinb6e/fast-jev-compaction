@@ -11,6 +11,7 @@ describe('resolveRequestBudget', () => {
     expect(resolveRequestBudget('typesafe/jev-1.13')).toEqual({
       maxRequestTokens: 30_000,
       maxStateTokens: 25_000,
+      stateCostPerQuestion: 0,
       source: 'measured',
     });
   });
@@ -38,6 +39,7 @@ describe('resolveRequestBudget', () => {
     expect(resolveRequestBudget('jaredpalmer/kev-4b', { maxRequestTokens: 99_000 })).toEqual({
       maxRequestTokens: 99_000,
       maxStateTokens: 82_500,
+      stateCostPerQuestion: 0,
       source: 'measured',
     });
     expect(
@@ -60,6 +62,7 @@ describe('applyRequestBudget', () => {
       keepThreshold: 0.7,
       maxRequestTokens: 7_168,
       maxStateTokens: 5_973,
+      stateCostPerQuestion: 0,
     });
   });
 
@@ -67,5 +70,16 @@ describe('applyRequestBudget', () => {
     const filled = applyRequestBudget({ model: 'jaredpalmer/kev-4b', maxRequestTokens: 3_000 });
     expect(filled.maxRequestTokens).toBe(3_000);
     expect(filled.maxStateTokens).toBe(2_500);
+  });
+
+  it('charges the state per question on the two gateway models that do', () => {
+    const budget = resolveRequestBudget('respan/span-02');
+    expect(budget.maxRequestTokens).toBe(125_000);
+    expect(budget.maxStateTokens).toBe(7_812);
+    expect(budget.stateCostPerQuestion).toBe(budget.maxStateTokens);
+
+    const filled = applyRequestBudget({ model: 'heygen/heygen-decision-1-turbo' });
+    expect(filled.maxRequestTokens).toBe(260_000);
+    expect(filled.stateCostPerQuestion).toBe(filled.maxStateTokens);
   });
 });

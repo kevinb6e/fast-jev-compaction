@@ -32,6 +32,7 @@ export const DEFAULT_OPTIONS: ResolvedCompactOptions = {
   preserveRecentMessages: 6,
   maxStateTokens: 25_000,
   maxRequestTokens: 30_000,
+  stateCostPerQuestion: 0,
   truncateHeadChars: 300,
   injectedMinChars: 1000,
   replyMinChars: 2000,
@@ -62,6 +63,10 @@ export function resolveOptions(options: CompactOptions = {}): ResolvedCompactOpt
     maxRequestTokens: Math.max(
       1,
       finite(options.maxRequestTokens, DEFAULT_OPTIONS.maxRequestTokens),
+    ),
+    stateCostPerQuestion: Math.max(
+      0,
+      Math.floor(finite(options.stateCostPerQuestion, DEFAULT_OPTIONS.stateCostPerQuestion)),
     ),
     truncateHeadChars: Math.max(
       0,
@@ -100,7 +105,7 @@ export function questionsFor(call: ToolCall): JevQuestions {
 export function batchCalls(
   calls: readonly ToolCall[],
   stateTokens: number,
-  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'>,
+  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'> & { stateCostPerQuestion?: number },
 ): ToolCall[][] {
   return batchItems(calls, questionsFor, stateTokens, options);
 }
@@ -114,8 +119,9 @@ export function batchItems<T>(
   items: readonly T[],
   questionsOf: (item: T) => JevQuestions,
   stateTokens: number,
-  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'>,
+  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'> & { stateCostPerQuestion?: number },
 ): T[][] {
+  const perQuestion = options.stateCostPerQuestion ?? 0;
   const budget = options.maxRequestTokens - stateTokens - REQUEST_OVERHEAD_TOKENS;
   const batches: T[][] = [];
   let current: T[] = [];
@@ -123,8 +129,8 @@ export function batchItems<T>(
   let currentQuestions = 0;
   for (const item of items) {
     const questions = questionsOf(item);
-    const tokens = estimateTokens(JSON.stringify(questions));
     const asked = Object.keys(questions).length;
+    const tokens = estimateTokens(JSON.stringify(questions)) + asked * perQuestion;
     if (
       current.length > 0 &&
       (currentTokens + tokens > budget || currentQuestions + asked > MAX_QUESTIONS)

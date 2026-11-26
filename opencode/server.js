@@ -545,6 +545,7 @@ var DEFAULT_OPTIONS = {
   preserveRecentMessages: 6,
   maxStateTokens: 25e3,
   maxRequestTokens: 3e4,
+  stateCostPerQuestion: 0,
   truncateHeadChars: 300,
   injectedMinChars: 1e3,
   replyMinChars: 2e3
@@ -569,6 +570,10 @@ function resolveOptions(options = {}) {
     maxRequestTokens: Math.max(
       1,
       finite(options.maxRequestTokens, DEFAULT_OPTIONS.maxRequestTokens)
+    ),
+    stateCostPerQuestion: Math.max(
+      0,
+      Math.floor(finite(options.stateCostPerQuestion, DEFAULT_OPTIONS.stateCostPerQuestion))
     ),
     truncateHeadChars: Math.max(
       0,
@@ -597,6 +602,7 @@ function questionsFor(call) {
   };
 }
 function batchItems(items, questionsOf, stateTokens, options) {
+  const perQuestion = options.stateCostPerQuestion ?? 0;
   const budget = options.maxRequestTokens - stateTokens - REQUEST_OVERHEAD_TOKENS;
   const batches = [];
   let current = [];
@@ -604,8 +610,8 @@ function batchItems(items, questionsOf, stateTokens, options) {
   let currentQuestions = 0;
   for (const item of items) {
     const questions = questionsOf(item);
-    const tokens = estimateTokens(JSON.stringify(questions));
     const asked = Object.keys(questions).length;
+    const tokens = estimateTokens(JSON.stringify(questions)) + asked * perQuestion;
     if (current.length > 0 && (currentTokens + tokens > budget || currentQuestions + asked > MAX_QUESTIONS)) {
       batches.push(current);
       current = [];

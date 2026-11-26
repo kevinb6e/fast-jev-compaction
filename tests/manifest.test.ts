@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -35,5 +35,35 @@ describe('manifest versions', () => {
     const lock = lockfileVersions();
     expect(lock.root).toBe(pkg);
     expect(lock.own).toBe(pkg);
+  });
+});
+
+describe('harness entry points', () => {
+  const json = (path: string): Record<string, any> =>
+    JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
+  const exists = (path: string): boolean => existsSync(new URL(`../${path}`, import.meta.url));
+
+  it('declares the shared Pi and omp extension in the npm package', () => {
+    const pkg = json('package.json');
+    expect(pkg.pi.extensions).toEqual(['./omp/index.ts']);
+    expect(pkg.omp.extensions).toEqual(['./omp/index.ts']);
+    expect(pkg.keywords).toContain('pi-package');
+    expect(pkg.files).toEqual(expect.arrayContaining(['src', 'omp']));
+    expect(exists('omp/index.ts')).toBe(true);
+  });
+
+  it('points Claude Code at its hook module', () => {
+    const hooks = json('hooks/hooks.json');
+    expect(hooks.modules).toEqual(['./fast-jev.ts']);
+    expect(exists('hooks/fast-jev.ts')).toBe(true);
+    expect(exists('.claude-plugin/plugin.json')).toBe(true);
+  });
+
+  it('ships the committed OpenCode plugin at both export paths', () => {
+    const pkg = json('package.json');
+    expect(pkg.exports['./server'].import).toBe('./opencode/server.js');
+    expect(pkg.exports['./opencode'].import).toBe('./opencode/server.js');
+    expect(pkg.files).toContain('opencode');
+    expect(exists('opencode/server.js')).toBe(true);
   });
 });

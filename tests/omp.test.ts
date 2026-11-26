@@ -154,6 +154,7 @@ describe('resolveOmpOptions', () => {
       maxSummaryTokens: 0,
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
+      stateCostPerQuestion: 0,
     });
   });
 
@@ -195,6 +196,7 @@ describe('resolveOmpOptions', () => {
       preserveRecentMessages: 2,
       maxStateTokens: 4000,
       maxRequestTokens: 5000,
+      stateCostPerQuestion: 0,
       truncateHeadChars: 120,
       minReductionRatio: 0.4,
       requireKeepSignal: true,
@@ -214,6 +216,7 @@ describe('resolveOmpOptions', () => {
       maxSummaryTokens: 0,
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
+      stateCostPerQuestion: 0,
     });
   });
 });

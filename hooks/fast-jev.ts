@@ -146,25 +146,18 @@ export function resolveHookConfig(
 export async function readEnvConfig($: {
   env: { get: (name: string) => Promise<string | undefined> };
 }): Promise<Record<string, string | undefined>> {
-  const read = async (name: string): Promise<string | undefined> => {
-    try {
-      return await $.env.get(name);
-    } catch {
-      return undefined;
-    }
-  };
   return {
-    FAST_JEV_KEEP_THRESHOLD: await read('FAST_JEV_KEEP_THRESHOLD'),
-    FAST_JEV_PRESERVE_RECENT: await read('FAST_JEV_PRESERVE_RECENT'),
-    FAST_JEV_MAX_STATE_TOKENS: await read('FAST_JEV_MAX_STATE_TOKENS'),
-    FAST_JEV_MAX_REQUEST_TOKENS: await read('FAST_JEV_MAX_REQUEST_TOKENS'),
-    FAST_JEV_TRUNCATE_HEAD_CHARS: await read('FAST_JEV_TRUNCATE_HEAD_CHARS'),
-    FAST_JEV_INJECTED_MIN_CHARS: await read('FAST_JEV_INJECTED_MIN_CHARS'),
-    FAST_JEV_REPLY_MIN_CHARS: await read('FAST_JEV_REPLY_MIN_CHARS'),
-    FAST_JEV_COMPACT_AT_PERCENT: await read('FAST_JEV_COMPACT_AT_PERCENT'),
-    FAST_JEV_MIN_REDUCTION: await read('FAST_JEV_MIN_REDUCTION'),
-    FAST_JEV_REQUIRE_KEEP_SIGNAL: await read('FAST_JEV_REQUIRE_KEEP_SIGNAL'),
-    FAST_JEV_MEASURE_NATIVE_SUMMARY: await read('FAST_JEV_MEASURE_NATIVE_SUMMARY'),
+    FAST_JEV_KEEP_THRESHOLD: await $.env.get('FAST_JEV_KEEP_THRESHOLD').catch(() => undefined),
+    FAST_JEV_PRESERVE_RECENT: await $.env.get('FAST_JEV_PRESERVE_RECENT').catch(() => undefined),
+    FAST_JEV_MAX_STATE_TOKENS: await $.env.get('FAST_JEV_MAX_STATE_TOKENS').catch(() => undefined),
+    FAST_JEV_MAX_REQUEST_TOKENS: await $.env.get('FAST_JEV_MAX_REQUEST_TOKENS').catch(() => undefined),
+    FAST_JEV_TRUNCATE_HEAD_CHARS: await $.env.get('FAST_JEV_TRUNCATE_HEAD_CHARS').catch(() => undefined),
+    FAST_JEV_INJECTED_MIN_CHARS: await $.env.get('FAST_JEV_INJECTED_MIN_CHARS').catch(() => undefined),
+    FAST_JEV_REPLY_MIN_CHARS: await $.env.get('FAST_JEV_REPLY_MIN_CHARS').catch(() => undefined),
+    FAST_JEV_COMPACT_AT_PERCENT: await $.env.get('FAST_JEV_COMPACT_AT_PERCENT').catch(() => undefined),
+    FAST_JEV_MIN_REDUCTION: await $.env.get('FAST_JEV_MIN_REDUCTION').catch(() => undefined),
+    FAST_JEV_REQUIRE_KEEP_SIGNAL: await $.env.get('FAST_JEV_REQUIRE_KEEP_SIGNAL').catch(() => undefined),
+    FAST_JEV_MEASURE_NATIVE_SUMMARY: await $.env.get('FAST_JEV_MEASURE_NATIVE_SUMMARY').catch(() => undefined),
   };
 }
 

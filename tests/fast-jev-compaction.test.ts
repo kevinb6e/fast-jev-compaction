@@ -406,6 +406,12 @@ describe('question batching', () => {
     expect(batches.flat().map((c) => c.id)).toEqual(calls.map((c) => c.id));
   });
 
+  it('charges state per question when the model bills it that way', () => {
+    const batches = batchCalls(calls, 1_000, { ...options, stateCostPerQuestion: 5_000 });
+    expect(batches.length).toBe(5);
+    expect(batches.flat().map((c) => c.id)).toEqual(calls.map((c) => c.id));
+  });
+
   it('throws when a single question does not fit', () => {
     expect(() => batchCalls(calls, 29_990, options)).toThrow(/no room/);
   });

@@ -143,6 +143,8 @@ export interface CompactOptions {
   maxStateTokens?: number;
   /** Estimated token ceiling for state plus one batch of questions. Default 30000. */
   maxRequestTokens?: number;
+  /** State tokens charged per question by models that bill state per question. Default 0. */
+  stateCostPerQuestion?: number;
   /** Characters of a dropped tool result to retain. Default 300. */
   truncateHeadChars?: number;
   /** Injected blocks (skills, command output, reminders) at least this long are judged by Jev; 0 leaves all text alone. Default 1000. */
@@ -158,6 +160,7 @@ export interface ResolvedCompactOptions {
   preserveRecentMessages: number;
   maxStateTokens: number;
   maxRequestTokens: number;
+  stateCostPerQuestion: number;
   truncateHeadChars: number;
   injectedMinChars: number;
   replyMinChars: number;

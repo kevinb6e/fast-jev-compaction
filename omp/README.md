@@ -1,10 +1,10 @@
-# fast-jev-compaction for omp (oh-my-pi)
+# fast-jev-compaction for Pi and omp (oh-my-pi)
 
-Replaces omp's compaction summary with Jev's pruned transcript: every tool
-call and result in the region omp is about to summarise is scored in one fast
+Replaces the compaction summary with Jev's pruned transcript: every tool call and
+result in the region the host is about to summarise is scored in one fast
 request, stale ones are dropped or truncated, everything kept stays verbatim.
 When Jev cannot shrink the transcript enough the extension returns nothing,
-and omp summarises the session itself.
+and the host summarises the session itself.
 
 ## Install
 
@@ -23,9 +23,15 @@ or from the shell:
 omp -e /home/you/Documents/fast-jev-compaction/omp/index.ts
 ```
 
-The extension is also declared in the package manifest
-(`"omp": { "extensions": ["./omp/index.ts"] }`), so a checkout installed as a
-package is discovered the same way.
+The extension is also declared in the package manifest under both `"omp"` and
+`"pi"`, so either host discovers the same entry file when this directory is
+installed as a package.
+
+For Pi:
+
+```sh
+pi install /path/to/fast-jev-compaction
+```
 
 Credentials come from the environment: `FAST_JEV_API_KEY`, then
 `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY` or `OPENCODE_API_KEY`. Expose the key

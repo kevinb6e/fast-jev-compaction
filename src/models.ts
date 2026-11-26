@@ -35,12 +35,30 @@ export const DECISION_MODEL_CEILINGS: Readonly<Record<string, number>> = {
   'cloudflare/clef-flash': 122_880,
   'cloudflare/clef-omni': 245_760,
   'liquid/d1': 61_440,
+  // 65 536-token wall, but a 250 000-byte text cap binds first for normal
+  // prose; the ceiling leaves room for that.
+  'liquid/d1.2': 50_000,
   'inception/mercury-decide': 61_440,
   'inception/mercury-decide:free': 61_440,
   'microsoft/microsoft-decision-1': 30_720,
   'togethercomputer/tev1-4b-experimental': 245_760,
+  // Both advertise 16 384 / 32 768 but accept ~130k input tokens.
+  'baseten/groundhog-1': 130_000,
+  'baseten/bison-1': 130_000,
+  'heygen/heygen-decision-1-turbo': 260_000,
+  'respan/span-02': 125_000,
   'jaredpalmer/kev-4b': 7_168,
 };
+
+/**
+ * Models whose gateway charges the whole state once per question. `batchItems`
+ * normally charges the question tokens only, so these need the state added to
+ * every question in the budget.
+ */
+export const STATE_PER_QUESTION_MODELS: ReadonlySet<string> = new Set([
+  'heygen/heygen-decision-1-turbo',
+  'respan/span-02',
+]);
 
 /**
  * What an unlisted model gets. Deliberately small: a request over the model's
@@ -52,10 +70,14 @@ export const UNKNOWN_MODEL_REQUEST_TOKENS = 8_192;
 
 /** The state is the bulk of a request; 25k of a 30k request is the old ratio. */
 const STATE_SHARE_OF_REQUEST = 25 / 30;
+/** For per-question models, leave room for about fifteen questions. */
+const PER_QUESTION_STATE_SHARE = 1 / 16;
 
 export interface RequestBudget {
   maxStateTokens: number;
   maxRequestTokens: number;
+  /** Estimated state tokens charged for each question; 0 for normal models. */
+  stateCostPerQuestion: number;
   /** Where the request ceiling came from. `fallback` means the model is unlisted. */
   source: 'measured' | 'fallback';
 }
@@ -63,6 +85,7 @@ export interface RequestBudget {
 export interface RequestBudgetOverrides {
   maxStateTokens?: number;
   maxRequestTokens?: number;
+  stateCostPerQuestion?: number;
 }
 
 /**
@@ -77,11 +100,18 @@ export function resolveRequestBudget(
   const measured = model ? DECISION_MODEL_CEILINGS[model] : undefined;
   const ceiling = measured ?? UNKNOWN_MODEL_REQUEST_TOKENS;
   const maxRequestTokens = Math.max(1, Math.floor(overrides.maxRequestTokens ?? ceiling));
+  const perQuestion = model ? STATE_PER_QUESTION_MODELS.has(model) : false;
+  const share = perQuestion ? PER_QUESTION_STATE_SHARE : STATE_SHARE_OF_REQUEST;
+  const maxStateTokens = Math.max(
+    1,
+    Math.floor(overrides.maxStateTokens ?? maxRequestTokens * share),
+  );
   return {
     maxRequestTokens,
-    maxStateTokens: Math.max(
-      1,
-      Math.floor(overrides.maxStateTokens ?? maxRequestTokens * STATE_SHARE_OF_REQUEST),
+    maxStateTokens,
+    stateCostPerQuestion: Math.max(
+      0,
+      Math.floor(overrides.stateCostPerQuestion ?? (perQuestion ? maxStateTokens : 0)),
     ),
     source: measured ? 'measured' : 'fallback',
   };
@@ -95,11 +125,12 @@ export function resolveRequestBudget(
  */
 export function applyRequestBudget<T extends RequestBudgetOverrides & { model?: string }>(
   options: T,
-): T & Pick<RequestBudget, 'maxStateTokens' | 'maxRequestTokens'> {
+): T & Pick<RequestBudget, 'maxStateTokens' | 'maxRequestTokens' | 'stateCostPerQuestion'> {
   const budget = resolveRequestBudget(options.model, options);
   return {
     ...options,
     maxStateTokens: budget.maxStateTokens,
     maxRequestTokens: budget.maxRequestTokens,
+    stateCostPerQuestion: budget.stateCostPerQuestion,
   };
 }

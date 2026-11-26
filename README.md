@@ -7,7 +7,7 @@ several harnesses, and is usable on its own as an npm library.
 
 No API key is needed: without one, the OpenCode plugin reaches Jev at
 [OpenCode Zen](https://opencode.ai/docs/zen), whose `jev-1.13-free` model is
-free and unauthenticated. The Claude Code hook and omp resolve TypeSafe and
+free and unauthenticated. The Claude Code hook, omp and Pi resolve TypeSafe and
 report the missing key, so set `provider: "zen"` there to use the free endpoint
 instead. Set `TYPESAFE_API_KEY` to use TypeSafe's own endpoint.
 
@@ -22,7 +22,7 @@ in order.
 
 The repository is an npm package (`src/`) plus one adapter per harness: a Claude
 Code function-hook plugin (`hooks/`, `.claude-plugin/`), an OpenCode plugin
-(`opencode/`) and an omp extension (`omp/`). All three feed their host's
+(`opencode/`) and a shared Pi/omp extension (`omp/`). All four feed their host's
 compaction through the same core and replace its summary with the original
 messages.
 
@@ -33,7 +33,7 @@ compaction hook a Jev-pruned transcript, and steps aside — leaving the
 harness's own summarizer to run — when Jev fails, the history is too short to
 shrink, the reduction is below `minReductionRatio`, or Jev kept none of the
 calls it judged while the `requireKeepSignal` guard is on (the guard is off
-by default in the Claude Code and omp adapters; the OpenCode plugin does not
+by default in the Claude Code, Pi and omp adapters; the OpenCode plugin does not
 have it — its pruning is continuous, so there is no result to fall back
 from). Nothing about the
 adapter changes the scoring; see [How it works](#how-it-works).
@@ -41,14 +41,14 @@ adapter changes the scoring; see [How it works](#how-it-works).
 | Harness | Entry point | Installed as |
 | --- | --- | --- |
 | Claude Code | [`hooks/fast-jev.ts`](hooks/fast-jev.ts) | a function-hook plugin (`.claude-plugin/`) |
-| OpenCode (V2) | [`opencode/index.ts`](opencode/index.ts) | an OpenCode plugin |
+| OpenCode (V2) | [`opencode/server.js`](opencode/server.js) | an OpenCode plugin |
+| Pi | [`omp/index.ts`](omp/index.ts) | a Pi package |
 | omp (oh-my-pi) | [`omp/index.ts`](omp/index.ts) | an omp extension |
 
-**Codex and Pi are not supported.** Codex's hook system cannot replace a
-compaction result, only observe it before the summary runs, so the pruning this
-library does has nowhere to land; Pi is a separate ecosystem with its own
-extension packaging. Both would need their own adapter — the core in `src/` is
-harness-agnostic, so an adapter is mostly a message-shape translation.
+**Codex is not supported.** Codex's hook system cannot replace a compaction
+result, only observe it before the summary runs, so the pruning this library does
+has nowhere to land. Pi and omp expose the same `session_before_compact`
+contract, so they share one adapter and one test suite.
 
 ### Claude Code
 
@@ -127,6 +127,23 @@ omp plugin install -l /path/to/fast-jev-compaction
 
 Because `omp plugin install -l` *links* the directory rather than copying it,
 that path must be durable. See [`omp/README.md`](omp/README.md) for
+configuration.
+
+### Pi
+
+Pi loads the same `session_before_compact` handler as omp. The package manifest
+declares it under `"pi": { "extensions": [...] }` and marks the package with the
+`pi-package` keyword, so Pi discovers the extension without a wrapper:
+
+```sh
+pi install /path/to/fast-jev-compaction
+# or
+pi install npm:fast-jev-compaction
+```
+
+Use `pi install -l /path/to/fast-jev-compaction` for a project-local install.
+Pi resolves TypeSafe by default, like omp; set `FAST_JEV_PROVIDER=zen` to use
+OpenCode Zen's free Jev. See [`omp/README.md`](omp/README.md) for the shared
 configuration.
 
 ## How it works
@@ -219,14 +236,14 @@ overrides the default model (see [Choosing a decision model](#choosing-a-decisio
 1. an explicit `provider` option;
 2. `FAST_JEV_PROVIDER`, when it names `typesafe`, `openrouter`, `opencode` or
    `zen` (the hook reads it from the engine environment, then its settings `env`
-   block; the omp and OpenCode adapters and the library read it from the
+   block; the Pi, omp and OpenCode adapters and the library read it from the
    process environment);
 3. a `baseUrl` containing `openrouter.ai`, or `opencode.ai/zen` (Zen), or
    `opencode.ai` (Console);
 4. an OpenRouter-shaped key (`sk-or-`) in **either** key variable;
 5. a lone `OPENROUTER_API_KEY`;
 6. a set `TYPESAFE_API_KEY`;
-7. otherwise the host's own terminal: TypeSafe for the library, hook and omp,
+7. otherwise the host's own terminal: TypeSafe for the library, hook, Pi and omp,
    and OpenCode Zen's keyless free Jev for the OpenCode plugin.
 
 So `TYPESAFE_API_KEY` outranks a set `OPENROUTER_API_KEY` (rule 6 beats rule 5)
@@ -234,20 +251,20 @@ unless that key is `sk-or-`-shaped. Rule 4 reads the key's own shape because a
 key keeps it wherever it is exported — a common setup exports an OpenRouter key
 as `TYPESAFE_API_KEY`, and without that rule TypeSafe would be chosen and the
 request would 401. With no key at all, only the OpenCode plugin falls back to
-Zen's free `jev-1.13-free`: the Claude Code hook and omp resolve TypeSafe and
+Zen's free `jev-1.13-free`: the Claude Code hook, Pi and omp resolve TypeSafe and
 report its missing key, so ask for Zen with `provider: "zen"` there. The
 library's `JevClient` resolves TypeSafe and throws the same missing-key error
 rather than sending a keyless request.
 
-**API key** — an explicit `apiKey` option, then `FAST_JEV_API_KEY` (omp and
+**API key** — an explicit `apiKey` option, then `FAST_JEV_API_KEY` (Pi, omp and
 OpenCode), then the resolved provider's own variable.
 
-**Endpoint** — an explicit `baseUrl` option, then `FAST_JEV_BASE_URL` (omp and
+**Endpoint** — an explicit `baseUrl` option, then `FAST_JEV_BASE_URL` (Pi, omp and
 OpenCode), then `JEV_BASE_URL`, then `TYPESAFE_BASE_URL`, then the provider's own
 URL.
 
 **Model** — an explicit `model` option (or `FAST_JEV_MODEL`, which every host
-now reads: the library, the Claude Code hook, omp and OpenCode), then the
+now reads: the library, the Claude Code hook, Pi, omp and OpenCode), then the
 resolved provider's default.
 
 The model IDs are `jev-latest`, `jev-1.13`, `jev-1.13-free` (Zen's free model)
@@ -260,10 +277,10 @@ its outcome line, so the destination is visible.
 ## Tuning every harness from one place
 
 The scoring knobs (`FAST_JEV_*`) are now read by **every** adapter, not only omp,
-so one block in a shell profile (`~/.zshrc`) tunes Claude Code, omp, OpenCode and
-the Pi port alike. Precedence is always: **the harness's own option** (Claude Code
-`userConfig`, OpenCode plugin `options`, Pi `settings.json`, omp has none) **wins,
-then the environment, then the built-in default**.
+so one block in a shell profile (`~/.zshrc`) tunes Claude Code, Pi, omp and
+OpenCode alike. Precedence is always: **the harness's own option** (Claude Code
+`userConfig`, OpenCode plugin `options`) **wins, then the environment, then the
+built-in default**. Pi and omp share an extension and read the environment.
 
 | Variable | Knob (default) |
 | --- | --- |
@@ -275,13 +292,12 @@ then the environment, then the built-in default**.
 | `FAST_JEV_MAX_REQUEST_TOKENS` | request budget (`30000`) |
 | `FAST_JEV_TRUNCATE_HEAD_CHARS` | tool-result head kept (`300`) |
 | `FAST_JEV_INJECTED_MIN_CHARS` / `FAST_JEV_REPLY_MIN_CHARS` | text-block floors (library) |
-| `FAST_JEV_MAX_SUMMARY_TOKENS` | summary ceiling (`0` = 20% of the context compacted, min `16384`; omp) |
-| `FAST_JEV_COOLDOWN_TOKENS` | Pi port cooldown (`8000`) |
+| `FAST_JEV_MAX_SUMMARY_TOKENS` | summary ceiling (`0` = 20% of the context compacted, min `16384`; Pi/omp) |
 | `FAST_JEV_REQUIRE_KEEP_SIGNAL` | refuse an all-drop run (`false`; `true/1/yes`) |
 | `FAST_JEV_MEASURE_NATIVE_SUMMARY` | also run the host summarizer to compare (`false`; Claude Code) |
 
 ```sh
-# one place for Claude Code, omp, OpenCode and Pi
+# one place for Claude Code, Pi, omp and OpenCode
 export FAST_JEV_MIN_REDUCTION=0.1
 export FAST_JEV_PRESERVE_RECENT=2
 export FAST_JEV_KEEP_THRESHOLD=0.4
@@ -298,7 +314,7 @@ on the same API, and this library speaks that protocol, so swapping one in is a
 one-line change:
 
 ```sh
-export FAST_JEV_MODEL=openai/gpt-6-luna-decisions   # omp and OpenCode
+export FAST_JEV_MODEL=openai/gpt-6-luna-decisions   # Pi, omp and OpenCode
 # the `model` plugin option for Claude Code
 ```
 
@@ -315,9 +331,13 @@ endpoint, one model at a time, by growing the `state` until it answers
 | `perplexity/pplx-decider-v1.1-27b` | 150 000 (token ceiling is higher; the gateway times out first) |
 | `upstage/solar-decide`, `upstage/solar-decide-flash` | 491 520 |
 | `cloudflare/clef` | 458 752 |
+| `heygen/heygen-decision-1-turbo` | 260 000 |
 | `cloudflare/clef-omni`, `togethercomputer/tev1-4b-experimental` | 245 760 |
+| `baseten/groundhog-1`, `baseten/bison-1` | 130 000 |
+| `respan/span-02` | 125 000 |
 | `nace-ai/drex-v1.5`, `cloudflare/clef-flash` | 122 880 |
 | `liquid/d1`, `inception/mercury-decide`(`:free`) | 61 440 |
+| `liquid/d1.2` | 50 000 (250 000-byte text cap binds before the 65 536-token wall) |
 | `microsoft/microsoft-decision-1` | 30 720 |
 | `typesafe/jev-1.13`, `~typesafe/jev-latest`, `jev-latest`, `jev-1.13` | 30 000 |
 | `jaredpalmer/kev-4b` | 7 168 |
@@ -328,9 +348,15 @@ over the limit fails outright and hands the whole compaction back to the host's
 summarizer, so an unknown model loses context rather than losing Jev. Raise it
 with `maxRequestTokens` once the model's own ceiling is known.
 
+`heygen/heygen-decision-1-turbo` and `respan/span-02` bill the state once per
+question, so a batch of 14 questions costs roughly 14× the state tokens.
+They get a smaller state share, and `batchItems` charges state per question for
+them. Explicit `maxRequestTokens` and `maxStateTokens` still win. `baseten`
+advertises 16 384 / 32 768 but accepts around 130 000 input tokens.
+
 `respan/span-01`, `respan/span-01-lite` and `respan/span-01-lite:free` are
 **not** compatible: they reject this library's structured `state` and require a
-string or a `{input, output}` object.
+string or a `{input, output}` object. `respan/span-02` is compatible.
 
 To add a model, measure it the same way and add one line to
 `DECISION_MODEL_CEILINGS`.
@@ -351,8 +377,8 @@ export OPENROUTER_API_KEY=...      # or OPENCODE_API_KEY / TYPESAFE_API_KEY
 export FAST_JEV_PROVIDER=openrouter
 ```
 
-Without any key, only the OpenCode plugin uses Zen's free Jev; the hook and omp
-resolve TypeSafe and report the missing key, so ask for Zen there with
+Without any key, only the OpenCode plugin uses Zen's free Jev; the hook, Pi and
+omp resolve TypeSafe and report the missing key, so ask for Zen there with
 `provider: "zen"`. To use
 Zen from the library, pass `{ apiKey: '', baseUrl: OPENCODE_ZEN_URL, model:
 OPENCODE_ZEN_FREE_MODEL }` (both constants are exported); a key is only required
@@ -380,8 +406,8 @@ if (reductionRatio(result) < 0.25) {
 ```
 
 `Message` is a subset of Claude Code's `SessionMessage`, so a session transcript
-can be passed in as is; the OpenCode and omp adapters translate their own shapes
-to it in `src/opencode/` and `omp/index.ts`.
+can be passed in as is; the OpenCode and Pi/omp adapters translate their own
+shapes to it in `src/opencode/` and `omp/index.ts`.
 
 To bring your own transport, implement `JevAsker` (one `ask(state, questions)`
 method) and call `compact(messages, asker, options)`; `buildJevRequest` and
@@ -420,7 +446,7 @@ relying on the environment. Never commit the key or put it in a source file.
 per-reason decision counts, the state size in estimated tokens, which fitting
 stage was needed, and the number of requests.
 
-The OpenCode and omp adapters add their own options on top (`maxSummaryTokens`,
+The OpenCode and Pi/omp adapters add their own options on top (`maxSummaryTokens`,
 `minReductionRatio`, `FAST_JEV_*` overrides); their READMEs are the reference.
 
 ## Measurement
