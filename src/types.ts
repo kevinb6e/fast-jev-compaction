@@ -145,6 +145,8 @@ export interface CompactOptions {
   maxRequestTokens?: number;
   /** State tokens charged per question by models that bill state per question. Default 0. */
   stateCostPerQuestion?: number;
+  /** Ceiling on state tokens repeated across questions in one request. 0 means no limit. */
+  maxExpandedTokens?: number;
   /** Characters of a dropped tool result to retain. Default 300. */
   truncateHeadChars?: number;
   /** Injected blocks (skills, command output, reminders) at least this long are judged by Jev; 0 leaves all text alone. Default 1000. */
@@ -161,6 +163,7 @@ export interface ResolvedCompactOptions {
   maxStateTokens: number;
   maxRequestTokens: number;
   stateCostPerQuestion: number;
+  maxExpandedTokens: number;
   truncateHeadChars: number;
   injectedMinChars: number;
   replyMinChars: number;
@@ -190,6 +193,8 @@ export interface CompactResult {
     /** Which fitting stage the state needed, '' when no request was made. */
     stateStage: string;
     requests: number;
+    /** Batches that failed; their calls keep their original content. */
+    failedRequests: number;
     ms: number;
   };
 }

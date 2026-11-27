@@ -452,5 +452,16 @@ export async function handleBeforeCompact(
 
 export default function fastJevCompaction(pi: ExtensionAPI): void {
   const options = resolveOmpOptions();
-  pi.on('session_before_compact', (event, ctx) => handleBeforeCompact(event, ctx, options));
+  // omp can emit another compaction while one is still in flight; a second
+  // round doubles the Jev traffic (and the 429 exposure) for the same session.
+  let compacting = false;
+  pi.on('session_before_compact', async (event, ctx) => {
+    if (compacting) return undefined;
+    compacting = true;
+    try {
+      return await handleBeforeCompact(event, ctx, options);
+    } finally {
+      compacting = false;
+    }
+  });
 }

@@ -546,6 +546,7 @@ var DEFAULT_OPTIONS = {
   maxStateTokens: 25e3,
   maxRequestTokens: 3e4,
   stateCostPerQuestion: 0,
+  maxExpandedTokens: 0,
   truncateHeadChars: 300,
   injectedMinChars: 1e3,
   replyMinChars: 2e3
@@ -574,6 +575,10 @@ function resolveOptions(options = {}) {
     stateCostPerQuestion: Math.max(
       0,
       Math.floor(finite(options.stateCostPerQuestion, DEFAULT_OPTIONS.stateCostPerQuestion))
+    ),
+    maxExpandedTokens: Math.max(
+      0,
+      Math.floor(finite(options.maxExpandedTokens, DEFAULT_OPTIONS.maxExpandedTokens))
     ),
     truncateHeadChars: Math.max(
       0,
@@ -604,6 +609,9 @@ function questionsFor(call) {
 function batchItems(items, questionsOf, stateTokens, options) {
   const perQuestion = options.stateCostPerQuestion ?? 0;
   const budget = options.maxRequestTokens - stateTokens - REQUEST_OVERHEAD_TOKENS;
+  const expandedLimit = options.maxExpandedTokens ?? 0;
+  const expandedCeiling = expandedLimit > 0 ? expandedLimit : Number.POSITIVE_INFINITY;
+  const exceedsExpanded = (questions, questionTokens) => questions * stateTokens + questionTokens > expandedCeiling;
   const batches = [];
   let current = [];
   let currentTokens = 0;
@@ -612,16 +620,23 @@ function batchItems(items, questionsOf, stateTokens, options) {
     const questions = questionsOf(item);
     const asked = Object.keys(questions).length;
     const tokens = estimateTokens(JSON.stringify(questions)) + asked * perQuestion;
-    if (current.length > 0 && (currentTokens + tokens > budget || currentQuestions + asked > MAX_QUESTIONS)) {
+    if (current.length > 0 && (currentTokens + tokens > budget || currentQuestions + asked > MAX_QUESTIONS || exceedsExpanded(currentQuestions + asked, currentTokens + tokens))) {
       batches.push(current);
       current = [];
       currentTokens = 0;
       currentQuestions = 0;
     }
-    if (current.length === 0 && tokens > budget) {
-      throw new Error(
-        `state leaves no room for questions (~${stateTokens} of ${options.maxRequestTokens} tokens)`
-      );
+    if (current.length === 0) {
+      if (tokens > budget) {
+        throw new Error(
+          `state leaves no room for questions (~${stateTokens} of ${options.maxRequestTokens} tokens)`
+        );
+      }
+      if (exceedsExpanded(asked, tokens)) {
+        throw new Error(
+          `state of ~${stateTokens} tokens leaves no room for questions under the ${expandedLimit}-token expanded limit`
+        );
+      }
     }
     current.push(item);
     currentTokens += tokens;
@@ -755,6 +770,7 @@ async function compact(messages, asker, options = {}) {
   const charsBefore = messages.reduce((sum, message) => sum + messageChars(message), 0);
   let fitted = { tokens: 0, stage: "" };
   let batches = [];
+  let failedRequests = 0;
   const answers = /* @__PURE__ */ new Map();
   const textAnswers = /* @__PURE__ */ new Map();
   const items = [
@@ -765,9 +781,24 @@ async function compact(messages, asker, options = {}) {
     const state = fitState(messages, calls, resolved, blocks);
     fitted = state;
     batches = batchItems(items, itemQuestions, state.tokens, resolved);
+    let firstFailure;
     const answered = await Promise.all(
-      batches.map((batch) => askBatch(asker, state.state, batch))
+      batches.map(
+        (batch) => askBatch(asker, state.state, batch).catch((error) => {
+          failedRequests += 1;
+          firstFailure ??= error;
+          return { calls: /* @__PURE__ */ new Map(), texts: /* @__PURE__ */ new Map() };
+        })
+      )
     );
+    if (failedRequests > 0) {
+      if (failedRequests === batches.length) throw firstFailure;
+      const detail = firstFailure instanceof Error ? firstFailure.message : String(firstFailure);
+      const host = globalThis;
+      host.console?.warn?.(
+        `[fast-jev-compaction] ${failedRequests}/${batches.length} Jev batch(es) failed; kept those calls verbatim: ${detail}`
+      );
+    }
     for (const part of answered) {
       for (const [id, answer] of part.calls) answers.set(id, answer);
       for (const [id, answer] of part.texts) textAnswers.set(id, answer);
@@ -806,18 +837,50 @@ async function compact(messages, asker, options = {}) {
       stateTokens: fitted.tokens,
       stateStage: fitted.stage,
       requests: batches.length,
+      failedRequests,
       ms: Date.now() - started
     }
   };
 }
 
 // src/client.ts
+var MAX_429_ATTEMPTS = 3;
+var RETRY_BASE_MS = 500;
+var RETRY_MAX_MS = 5e3;
+var RATE_LIMIT_CAP_MS = 12e4;
+function maxInFlightFor(options) {
+  const configured = Number(options.env?.FAST_JEV_MAX_IN_FLIGHT ?? 2);
+  return Number.isFinite(configured) ? Math.max(1, Math.min(8, Math.floor(configured))) : 2;
+}
+function rateLimitCooldownMs(options) {
+  const configured = Number(options.env?.FAST_JEV_RATE_LIMIT_COOLDOWN_MS ?? 61e3);
+  return Number.isFinite(configured) ? Math.max(0, Math.min(RATE_LIMIT_CAP_MS, configured)) : 61e3;
+}
+function retryDelayMs(headers, attempt, cooldownMs) {
+  const header = headers?.get?.("retry-after");
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1e3, RATE_LIMIT_CAP_MS);
+    const until = Date.parse(header);
+    if (Number.isFinite(until)) return Math.min(Math.max(0, until - Date.now()), RATE_LIMIT_CAP_MS);
+  }
+  if (attempt < MAX_429_ATTEMPTS) return cooldownMs;
+  return Math.min(RETRY_BASE_MS * 2 ** (attempt - 1), RETRY_MAX_MS);
+}
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 var JevClient = class {
   apiKey;
   model;
   baseUrl;
   provider;
   fetcher;
+  maxInFlight;
+  cooldownMs;
+  rateLimitedUntil = 0;
+  inFlight = 0;
+  waiters = [];
   constructor(options = {}) {
     const env = options.env ?? process.env;
     this.provider = resolveJevProvider(
@@ -828,12 +891,30 @@ var JevClient = class {
     this.model = options.model ?? environmentModel(env);
     this.baseUrl = options.baseUrl ?? environmentEndpoint(env, this.provider);
     this.fetcher = options.fetch ?? fetch;
+    this.maxInFlight = maxInFlightFor(options);
+    this.cooldownMs = rateLimitCooldownMs(options);
   }
   /** The provider this client resolves to, for logs and error messages. */
   get resolvedProvider() {
     return this.provider;
   }
+  /** Cap in-flight requests so large sessions cannot burst past endpoint limits. */
+  async withSlot(run) {
+    while (this.inFlight >= this.maxInFlight) {
+      await new Promise((resolve) => this.waiters.push(resolve));
+    }
+    this.inFlight += 1;
+    try {
+      return await run();
+    } finally {
+      this.inFlight -= 1;
+      this.waiters.shift()?.();
+    }
+  }
   async ask(state, questions) {
+    return this.withSlot(() => this.askOnce(state, questions));
+  }
+  async askOnce(state, questions) {
     if (!this.apiKey && this.provider !== "zen" && !this.baseUrl) {
       throw missingApiKeyError(this.provider);
     }
@@ -847,12 +928,27 @@ var JevClient = class {
       state,
       questions
     );
-    const response = await this.fetcher(request.url, {
-      method: request.method,
-      headers: request.headers,
-      body: request.body
-    });
-    return parseJevResponse(response.status, response.ok, await response.text());
+    while (Date.now() < this.rateLimitedUntil) {
+      await sleep(Math.min(this.rateLimitedUntil - Date.now(), 3e4));
+    }
+    for (let attempt = 1; ; attempt += 1) {
+      const response = await this.fetcher(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body
+      });
+      if (response.ok) return parseJevResponse(response.status, true, await response.text());
+      const text = await response.text();
+      if (response.status === 429) {
+        const delay = retryDelayMs(response.headers, attempt, this.cooldownMs);
+        this.rateLimitedUntil = Math.max(this.rateLimitedUntil, Date.now() + delay);
+        if (attempt < MAX_429_ATTEMPTS) {
+          await sleep(delay);
+          continue;
+        }
+      }
+      return parseJevResponse(response.status, false, text);
+    }
   }
 };
 

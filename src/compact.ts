@@ -33,6 +33,7 @@ export const DEFAULT_OPTIONS: ResolvedCompactOptions = {
   maxStateTokens: 25_000,
   maxRequestTokens: 30_000,
   stateCostPerQuestion: 0,
+  maxExpandedTokens: 0,
   truncateHeadChars: 300,
   injectedMinChars: 1000,
   replyMinChars: 2000,
@@ -67,6 +68,10 @@ export function resolveOptions(options: CompactOptions = {}): ResolvedCompactOpt
     stateCostPerQuestion: Math.max(
       0,
       Math.floor(finite(options.stateCostPerQuestion, DEFAULT_OPTIONS.stateCostPerQuestion)),
+    ),
+    maxExpandedTokens: Math.max(
+      0,
+      Math.floor(finite(options.maxExpandedTokens, DEFAULT_OPTIONS.maxExpandedTokens)),
     ),
     truncateHeadChars: Math.max(
       0,
@@ -105,7 +110,10 @@ export function questionsFor(call: ToolCall): JevQuestions {
 export function batchCalls(
   calls: readonly ToolCall[],
   stateTokens: number,
-  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'> & { stateCostPerQuestion?: number },
+  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'> & {
+    stateCostPerQuestion?: number;
+    maxExpandedTokens?: number;
+  },
 ): ToolCall[][] {
   return batchItems(calls, questionsFor, stateTokens, options);
 }
@@ -119,10 +127,17 @@ export function batchItems<T>(
   items: readonly T[],
   questionsOf: (item: T) => JevQuestions,
   stateTokens: number,
-  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'> & { stateCostPerQuestion?: number },
+  options: Pick<ResolvedCompactOptions, 'maxRequestTokens'> & {
+    stateCostPerQuestion?: number;
+    maxExpandedTokens?: number;
+  },
 ): T[][] {
   const perQuestion = options.stateCostPerQuestion ?? 0;
   const budget = options.maxRequestTokens - stateTokens - REQUEST_OVERHEAD_TOKENS;
+  const expandedLimit = options.maxExpandedTokens ?? 0;
+  const expandedCeiling = expandedLimit > 0 ? expandedLimit : Number.POSITIVE_INFINITY;
+  const exceedsExpanded = (questions: number, questionTokens: number): boolean =>
+    questions * stateTokens + questionTokens > expandedCeiling;
   const batches: T[][] = [];
   let current: T[] = [];
   let currentTokens = 0;
@@ -133,17 +148,26 @@ export function batchItems<T>(
     const tokens = estimateTokens(JSON.stringify(questions)) + asked * perQuestion;
     if (
       current.length > 0 &&
-      (currentTokens + tokens > budget || currentQuestions + asked > MAX_QUESTIONS)
+      (currentTokens + tokens > budget ||
+        currentQuestions + asked > MAX_QUESTIONS ||
+        exceedsExpanded(currentQuestions + asked, currentTokens + tokens))
     ) {
       batches.push(current);
       current = [];
       currentTokens = 0;
       currentQuestions = 0;
     }
-    if (current.length === 0 && tokens > budget) {
-      throw new Error(
-        `state leaves no room for questions (~${stateTokens} of ${options.maxRequestTokens} tokens)`,
-      );
+    if (current.length === 0) {
+      if (tokens > budget) {
+        throw new Error(
+          `state leaves no room for questions (~${stateTokens} of ${options.maxRequestTokens} tokens)`,
+        );
+      }
+      if (exceedsExpanded(asked, tokens)) {
+        throw new Error(
+          `state of ~${stateTokens} tokens leaves no room for questions under the ${expandedLimit}-token expanded limit`,
+        );
+      }
     }
     current.push(item);
     currentTokens += tokens;
@@ -365,6 +389,7 @@ export async function compact(
 
   let fitted: { tokens: number; stage: string } = { tokens: 0, stage: '' };
   let batches: Item[][] = [];
+  let failedRequests = 0;
   const answers = new Map<string, CallAnswer>();
   const textAnswers = new Map<string, TextAnswer>();
   const items: Item[] = [
@@ -375,9 +400,26 @@ export async function compact(
     const state = fitState(messages, calls, resolved, blocks);
     fitted = state;
     batches = batchItems(items, itemQuestions, state.tokens, resolved);
+    let firstFailure: unknown;
     const answered = await Promise.all(
-      batches.map((batch) => askBatch(asker, state.state, batch)),
+      batches.map((batch) =>
+        askBatch(asker, state.state, batch).catch((error: unknown) => {
+          failedRequests += 1;
+          firstFailure ??= error;
+          return { calls: new Map<string, CallAnswer>(), texts: new Map<string, TextAnswer>() };
+        }),
+      ),
     );
+    if (failedRequests > 0) {
+      if (failedRequests === batches.length) throw firstFailure;
+      const detail = firstFailure instanceof Error ? firstFailure.message : String(firstFailure);
+      const host = globalThis as typeof globalThis & {
+        console?: { warn?: (message: string) => void };
+      };
+      host.console?.warn?.(
+        `[fast-jev-compaction] ${failedRequests}/${batches.length} Jev batch(es) failed; kept those calls verbatim: ${detail}`,
+      );
+    }
     for (const part of answered) {
       for (const [id, answer] of part.calls) answers.set(id, answer);
       for (const [id, answer] of part.texts) textAnswers.set(id, answer);
@@ -417,6 +459,7 @@ export async function compact(
       stateTokens: fitted.tokens,
       stateStage: fitted.stage,
       requests: batches.length,
+      failedRequests,
       ms: Date.now() - started,
     },
   };

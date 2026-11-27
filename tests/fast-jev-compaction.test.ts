@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyDecisions,
   batchCalls,
@@ -426,6 +426,21 @@ describe('question batching', () => {
     expect(batches.flat()).toHaveLength(200);
     for (const batch of batches) expect(batch.length * 2).toBeLessThanOrEqual(128);
   });
+
+  it('splits batches so the repeated state stays under the expanded-token limit', () => {
+    const many: ToolCall[] = Array.from({ length: 64 }, (_, i) => ({
+      ...calls[0]!,
+      id: `t${i + 1}`,
+      tool_use_id: `tool-${i + 1}`,
+    }));
+    const batches = batchCalls(many, 83_756, {
+      maxRequestTokens: 130_000,
+      maxExpandedTokens: 3_500_000,
+    });
+    expect(batches.flat()).toHaveLength(64);
+    expect(batches.length).toBeGreaterThan(1);
+    for (const batch of batches) expect(batch.length).toBeLessThanOrEqual(20);
+  });
 });
 
 describe('decisions', () => {
@@ -645,6 +660,117 @@ describe('HTTP client', () => {
       compactMessages(transcript(), { apiKey: '', provider: 'typesafe', preserveRecentMessages: 1 }),
     ).rejects.toThrow(/TYPESAFE_API_KEY/);
   });
+
+  it('retries a 429 with backoff and returns the later success', async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const fetcher = (async () => {
+        calls += 1;
+        if (calls === 1) return new Response('{"error":"Rate limit exceeded"}', { status: 429 });
+        return new Response(JSON.stringify({ answers: { q: { noul: 0.4 } } }), { status: 200 });
+      }) as typeof fetch;
+      const promise = new JevClient({ apiKey: 'k', fetch: fetcher }).ask('state', {
+        q: { type: 'noul', instructions: 'x' },
+      });
+      await vi.runAllTimersAsync();
+      await expect(promise).resolves.toEqual({ answers: { q: { noul: 0.4 } } });
+      expect(calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives up after three 429 responses', async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const fetcher = (async () => {
+        calls += 1;
+        return new Response('{"error":"Rate limit exceeded"}', { status: 429 });
+      }) as typeof fetch;
+      const promise = new JevClient({ apiKey: 'k', fetch: fetcher }).ask('state', {
+        q: { type: 'noul', instructions: 'x' },
+      });
+      const assertion = expect(promise).rejects.toThrow(/429/);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(calls).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('caps concurrent requests per client', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const fetcher = (async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return new Response(JSON.stringify({ answers: {} }), { status: 200 });
+    }) as typeof fetch;
+    const client = new JevClient({ apiKey: 'k', fetch: fetcher });
+    const questions = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [`q${i}`, { type: 'noul', instructions: 'x' }]),
+    );
+    const promises = Array.from({ length: 12 }, () => client.ask('state', questions));
+    await Promise.all(promises);
+    expect(maxActive).toBe(2);
+  });
+
+  it('waits a full window after a 429 without Retry-After', async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const delays: number[] = [];
+      const fetcher = (async () => {
+        calls += 1;
+        return new Response('{"error":"Rate limit exceeded"}', { status: 429 });
+      }) as typeof fetch;
+      const schedule = vi.spyOn(globalThis, 'setTimeout');
+      const promise = new JevClient({
+        apiKey: 'k',
+        fetch: fetcher,
+        env: { FAST_JEV_RATE_LIMIT_COOLDOWN_MS: '61000' },
+      }).ask('state', { q: { type: 'noul', instructions: 'x' } });
+      const assertion = expect(promise).rejects.toThrow(/429/);
+      await vi.runAllTimersAsync();
+      await assertion;
+      delays.push(...schedule.mock.calls.map(([, ms]) => Number(ms)));
+      expect(calls).toBe(3);
+      expect(delays.filter((ms) => ms >= 60_000).length).toBeGreaterThanOrEqual(2);
+      schedule.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('honours a long Retry-After header', async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const fetcher = (async () => {
+        calls += 1;
+        return new Response('rate limited', {
+          status: 429,
+          headers: { 'Retry-After': '120' },
+        });
+      }) as typeof fetch;
+      const schedule = vi.spyOn(globalThis, 'setTimeout');
+      const promise = new JevClient({ apiKey: 'k', fetch: fetcher }).ask('state', {
+        q: { type: 'noul', instructions: 'x' },
+      });
+      const assertion = expect(promise).rejects.toThrow(/429/);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(schedule.mock.calls.some(([, ms]) => Number(ms) >= 120_000)).toBe(true);
+      schedule.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('client endpoint from the environment', () => {
@@ -739,5 +865,52 @@ describe('keyless endpoints', () => {
     expect(seen).toEqual(['https://opencode.ai/zen/v1/systemone content-type']);
     await expect(new JevClient({ apiKey: '', fetch: fetcher }).ask('s', {})).rejects.toThrow(/TYPESAFE_API_KEY/);
     await expect(new JevClient({ apiKey: '', provider: 'openrouter', fetch: fetcher }).ask('s', {})).rejects.toThrow(/OPENROUTER_API_KEY/);
+  });
+});
+
+describe('partial request failures', () => {
+  function batchedTranscript(): Message[] {
+    const messages: Message[] = [message('user', 'goal')];
+    for (let i = 1; i <= 4; i += 1) {
+      messages.push(call(`c${i}`, 'Read', { file: `f${i}` }, `call ${i}`));
+      messages.push(result(`c${i}`, `result ${i}`));
+      messages.push(message('assistant', `step ${i}`));
+    }
+    return messages;
+  }
+
+  const options = {
+    maxRequestTokens: 400,
+    maxStateTokens: 240,
+    stateCostPerQuestion: 10,
+    preserveRecentMessages: 0,
+  };
+
+  it('keeps answers from the batches that succeeded', async () => {
+    let asks = 0;
+    const asker: JevAsker = {
+      ask: async (_state, questions) => {
+        asks += 1;
+        if (asks === 1) throw new Error('429 rate limit');
+        return {
+          answers: Object.fromEntries(
+            Object.keys(questions).map((id) => [id, { type: 'noul', noul: 0.9 }]),
+          ),
+        } as never;
+      },
+    };
+    const result = await compact(batchedTranscript(), asker, options);
+    expect(asks).toBeGreaterThan(1);
+    expect(result.stats.failedRequests).toBe(1);
+    expect(result.stats.requests).toBe(asks);
+  });
+
+  it('throws when every batch fails', async () => {
+    const asker: JevAsker = {
+      ask: async () => {
+        throw new Error('all batches down');
+      },
+    };
+    await expect(compact(batchedTranscript(), asker, options)).rejects.toThrow(/all batches down/);
   });
 });

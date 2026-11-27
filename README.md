@@ -290,6 +290,8 @@ built-in default**. Pi and omp share an extension and read the environment.
 | `FAST_JEV_COMPACT_AT_PERCENT` | auto-compact context percent (`60`) |
 | `FAST_JEV_MAX_STATE_TOKENS` | state budget (`25000`) |
 | `FAST_JEV_MAX_REQUEST_TOKENS` | request budget (`30000`) |
+| `FAST_JEV_MAX_IN_FLIGHT` | concurrent Jev requests (`2`; raise only for endpoints with wider quotas) |
+| `FAST_JEV_RATE_LIMIT_COOLDOWN_MS` | wait after an unqualified 429 (`61000`) |
 | `FAST_JEV_TRUNCATE_HEAD_CHARS` | tool-result head kept (`300`) |
 | `FAST_JEV_INJECTED_MIN_CHARS` / `FAST_JEV_REPLY_MIN_CHARS` | text-block floors (library) |
 | `FAST_JEV_MAX_SUMMARY_TOKENS` | summary ceiling (`0` = 20% of the context compacted, min `16384`; Pi/omp) |

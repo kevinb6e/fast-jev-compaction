@@ -61,6 +61,16 @@ export const STATE_PER_QUESTION_MODELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Baseten's block-attention gateway repeats the state per question and caps the
+ * expanded total at 3.5M tokens, independent of the request-token ceiling.
+ */
+const BLOCK_ATTENTION_MODELS: ReadonlySet<string> = new Set([
+  'baseten/groundhog-1',
+  'baseten/bison-1',
+]);
+const BLOCK_ATTENTION_EXPANDED_TOKENS = 3_500_000;
+
+/**
  * What an unlisted model gets. Deliberately small: a request over the model's
  * limit fails outright and hands the whole compaction back to the host's
  * summarizer, so an unknown model should lose context rather than lose Jev.
@@ -78,6 +88,8 @@ export interface RequestBudget {
   maxRequestTokens: number;
   /** Estimated state tokens charged for each question; 0 for normal models. */
   stateCostPerQuestion: number;
+  /** Ceiling on state tokens repeated across questions; 0 means no limit. */
+  maxExpandedTokens: number;
   /** Where the request ceiling came from. `fallback` means the model is unlisted. */
   source: 'measured' | 'fallback';
 }
@@ -86,6 +98,7 @@ export interface RequestBudgetOverrides {
   maxStateTokens?: number;
   maxRequestTokens?: number;
   stateCostPerQuestion?: number;
+  maxExpandedTokens?: number;
 }
 
 /**
@@ -101,6 +114,7 @@ export function resolveRequestBudget(
   const ceiling = measured ?? UNKNOWN_MODEL_REQUEST_TOKENS;
   const maxRequestTokens = Math.max(1, Math.floor(overrides.maxRequestTokens ?? ceiling));
   const perQuestion = model ? STATE_PER_QUESTION_MODELS.has(model) : false;
+  const blockAttention = model ? BLOCK_ATTENTION_MODELS.has(model) : false;
   const share = perQuestion ? PER_QUESTION_STATE_SHARE : STATE_SHARE_OF_REQUEST;
   const maxStateTokens = Math.max(
     1,
@@ -112,6 +126,10 @@ export function resolveRequestBudget(
     stateCostPerQuestion: Math.max(
       0,
       Math.floor(overrides.stateCostPerQuestion ?? (perQuestion ? maxStateTokens : 0)),
+    ),
+    maxExpandedTokens: Math.max(
+      0,
+      Math.floor(overrides.maxExpandedTokens ?? (blockAttention ? BLOCK_ATTENTION_EXPANDED_TOKENS : 0)),
     ),
     source: measured ? 'measured' : 'fallback',
   };
@@ -125,12 +143,17 @@ export function resolveRequestBudget(
  */
 export function applyRequestBudget<T extends RequestBudgetOverrides & { model?: string }>(
   options: T,
-): T & Pick<RequestBudget, 'maxStateTokens' | 'maxRequestTokens' | 'stateCostPerQuestion'> {
+): T &
+  Pick<
+    RequestBudget,
+    'maxStateTokens' | 'maxRequestTokens' | 'stateCostPerQuestion' | 'maxExpandedTokens'
+  > {
   const budget = resolveRequestBudget(options.model, options);
   return {
     ...options,
     maxStateTokens: budget.maxStateTokens,
     maxRequestTokens: budget.maxRequestTokens,
     stateCostPerQuestion: budget.stateCostPerQuestion,
+    maxExpandedTokens: budget.maxExpandedTokens,
   };
 }

@@ -155,6 +155,7 @@ describe('resolveOmpOptions', () => {
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
       stateCostPerQuestion: 0,
+      maxExpandedTokens: 0,
     });
   });
 
@@ -197,6 +198,7 @@ describe('resolveOmpOptions', () => {
       maxStateTokens: 4000,
       maxRequestTokens: 5000,
       stateCostPerQuestion: 0,
+      maxExpandedTokens: 0,
       truncateHeadChars: 120,
       minReductionRatio: 0.4,
       requireKeepSignal: true,
@@ -217,6 +219,7 @@ describe('resolveOmpOptions', () => {
       maxStateTokens: 25000,
       maxRequestTokens: 30000,
       stateCostPerQuestion: 0,
+      maxExpandedTokens: 0,
     });
   });
 });
@@ -352,6 +355,7 @@ describe('buildSummary', () => {
     expect(outcome.summary).toContain('## assistant\nOn it.');
   });
 
+
   it('falls back when Jev keeps everything', async () => {
     const outcome = await buildSummary(
       preparation({ messagesToSummarize: omp(transcript()) }),
@@ -474,5 +478,43 @@ describe('extension entry point', () => {
     const on = vi.fn();
     fastJevCompaction({ on } as never);
     expect(on).toHaveBeenCalledWith('session_before_compact', expect.any(Function));
+  });
+
+  it('ignores an overlapping compaction while one is running', async () => {
+    const savedFetch = globalThis.fetch;
+    const savedProvider = process.env.FAST_JEV_PROVIDER;
+    process.env.FAST_JEV_PROVIDER = 'zen';
+    let active = 0;
+    let maxActive = 0;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+      const { questions } = JSON.parse(String(init?.body));
+      const answers = Object.fromEntries(
+        Object.keys(questions).map((id) => [id, { type: 'noul', noul: 0.1 }]),
+      );
+      return new Response(JSON.stringify({ answers }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const on = vi.fn();
+      fastJevCompaction({ on } as never);
+      const handler = on.mock.calls[0]![1] as (event: unknown, ctx: unknown) => Promise<unknown>;
+      const event = {
+        type: 'session_before_compact',
+        preparation: preparation({ messagesToSummarize: omp(transcript()) }),
+        branchEntries: [],
+        signal: new AbortController().signal,
+      };
+      const ctx = { ui: { notify: vi.fn() } };
+      const results = await Promise.all([handler(event, ctx), handler(event, ctx)]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(maxActive).toBe(1);
+    } finally {
+      globalThis.fetch = savedFetch;
+      if (savedProvider === undefined) delete process.env.FAST_JEV_PROVIDER;
+      else process.env.FAST_JEV_PROVIDER = savedProvider;
+    }
   });
 });

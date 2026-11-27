@@ -12,6 +12,7 @@ describe('resolveRequestBudget', () => {
       maxRequestTokens: 30_000,
       maxStateTokens: 25_000,
       stateCostPerQuestion: 0,
+      maxExpandedTokens: 0,
       source: 'measured',
     });
   });
@@ -40,6 +41,7 @@ describe('resolveRequestBudget', () => {
       maxRequestTokens: 99_000,
       maxStateTokens: 82_500,
       stateCostPerQuestion: 0,
+      maxExpandedTokens: 0,
       source: 'measured',
     });
     expect(
@@ -63,6 +65,7 @@ describe('applyRequestBudget', () => {
       maxRequestTokens: 7_168,
       maxStateTokens: 5_973,
       stateCostPerQuestion: 0,
+      maxExpandedTokens: 0,
     });
   });
 
@@ -81,5 +84,11 @@ describe('applyRequestBudget', () => {
     const filled = applyRequestBudget({ model: 'heygen/heygen-decision-1-turbo' });
     expect(filled.maxRequestTokens).toBe(260_000);
     expect(filled.stateCostPerQuestion).toBe(filled.maxStateTokens);
+  });
+
+  it('caps expanded tokens on the block-attention models', () => {
+    expect(resolveRequestBudget('baseten/groundhog-1').maxExpandedTokens).toBe(3_500_000);
+    expect(resolveRequestBudget('baseten/bison-1').maxExpandedTokens).toBe(3_500_000);
+    expect(resolveRequestBudget('baseten/groundhog-1', { maxExpandedTokens: 0 }).maxExpandedTokens).toBe(0);
   });
 });
