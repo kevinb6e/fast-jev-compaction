@@ -8,6 +8,7 @@ import fastJevCompaction, {
   resolveOmpOptions,
   summaryCeiling,
 } from '../omp/index.ts';
+import { estimateTokens } from '../src/index.js';
 import type { JevAsker } from '../src/index.js';
 
 type OmpMessages = Parameters<typeof fromAgentMessages>[0];
@@ -225,12 +226,17 @@ describe('resolveOmpOptions', () => {
 });
 
 describe('summaryCeiling', () => {
-  it('derives 20% of the context being compacted, with a 16k floor', () => {
+  it('derives the context minus the required reduction, with a 16k floor', () => {
     const options = resolveOmpOptions({});
-    expect(summaryCeiling(preparation({ tokensBefore: 118572 }), options)).toBe(23714);
-    expect(summaryCeiling(preparation({ tokensBefore: 220715 }), options)).toBe(44143);
-    expect(summaryCeiling(preparation({ tokensBefore: 323739 }), options)).toBe(64748);
+    expect(summaryCeiling(preparation({ tokensBefore: 89510 }), options)).toBe(67133);
+    expect(summaryCeiling(preparation({ tokensBefore: 118572 }), options)).toBe(88929);
+    expect(summaryCeiling(preparation({ tokensBefore: 323739 }), options)).toBe(242804);
     expect(summaryCeiling(preparation({ tokensBefore: 8000 }), options)).toBe(16384);
+  });
+
+  it('lets a looser min reduction carry a larger summary', () => {
+    const options = resolveOmpOptions({ FAST_JEV_MIN_REDUCTION: '0.1' });
+    expect(summaryCeiling(preparation({ tokensBefore: 89510 }), options)).toBe(80559);
   });
 
   it('takes an explicit ceiling verbatim', () => {
@@ -411,6 +417,29 @@ describe('buildSummary', () => {
     );
     expect(outcome.summary).toBeDefined();
     expect(outcome.reason).toBeUndefined();
+  });
+
+  it('records a long retained reply that the fixed ceiling rejected', async () => {
+    const words = 'word '.repeat(65_000);
+    const filler = 'filler '.repeat(30_000);
+    const outcome = await buildSummary(
+      preparation({
+        tokensBefore: 89510,
+        messagesToSummarize: omp([
+          user('Fix the failing test.'),
+          assistant([{ type: 'text', text: words }]),
+          assistant([toolCall('t1', 'Read', { file_path: 'src/a.ts' })]),
+          toolResult('t1', 'Read', filler),
+          user('Anything else?'),
+        ]),
+      }),
+      resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1' }),
+      asker((name) => (name.startsWith('text_') ? 0.9 : 0.1)),
+    );
+    expect(estimateTokens(outcome.summary ?? '')).toBeGreaterThan(17902);
+    expect(outcome.result?.stats.callsDropped).toBe(1);
+    expect(outcome.reason).toBeUndefined();
+    expect(outcome.summary).toContain(words.slice(0, 100));
   });
 });
 

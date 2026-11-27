@@ -69,13 +69,12 @@ export interface OmpOptions extends CompactOptions {
 }
 
 /**
- * Share of the pre-compaction context the summary may occupy when no absolute
- * ceiling is set. The pruned transcript keeps every assistant turn, so its size
- * grows with the session; a fixed ceiling stops fitting as soon as a session
- * accumulates enough narration (20% leaves at least 80% of the context free,
- * landing near omp's own ~40k post-compaction target).
+ * The summary ceiling follows the configured reduction: a transcript that may
+ * shrink by 25% may render a summary of up to 75% of the context. The pruned
+ * transcript keeps every assistant turn, so a fixed ratio stops fitting once a
+ * session accumulates enough narration. Deriving it keeps the size guard in
+ * step with the shrink guard when `FAST_JEV_MIN_REDUCTION` is tuned.
  */
-const SUMMARY_CEILING_RATIO = 0.2;
 /** Ceiling floor: short sessions keep today's 16k budget. */
 const SUMMARY_CEILING_MIN = 16384;
 
@@ -86,10 +85,13 @@ export const OMP_DEFAULTS = {
   maxSummaryTokens: 0,
 } as const;
 
-/** The token ceiling for the rendered summary: the option, or 20% of the context (min 16k). */
+/** The token ceiling for the rendered summary: the option, or the context minus the required reduction (min 16k). */
 export function summaryCeiling(preparation: Preparation, options: OmpOptions): number {
   if (options.maxSummaryTokens > 0) return options.maxSummaryTokens;
-  return Math.max(SUMMARY_CEILING_MIN, Math.round(preparation.tokensBefore * SUMMARY_CEILING_RATIO));
+  return Math.max(
+    SUMMARY_CEILING_MIN,
+    Math.round(preparation.tokensBefore * (1 - options.minReductionRatio)),
+  );
 }
 
 type NumericKey =
