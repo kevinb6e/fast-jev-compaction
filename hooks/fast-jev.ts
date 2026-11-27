@@ -42,7 +42,7 @@ import type {
 
 const HOOK_DEFAULTS = {
   compactAtPercent: 60,
-  minReductionRatio: 0.25,
+  minReductionRatio: 0.45,
   requireKeepSignal: false,
   measureNativeSummary: false,
 };

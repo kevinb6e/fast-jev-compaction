@@ -82,7 +82,7 @@ const fit = {
 describe('options', () => {
   it('fills in defaults and ignores non-finite values', () => {
     expect(resolveOptions()).toMatchObject({
-      keepThreshold: 0.5,
+      keepThreshold: 0.6,
       preserveRecentMessages: 6,
       maxStateTokens: 25_000,
       maxRequestTokens: 30_000,
@@ -93,7 +93,7 @@ describe('options', () => {
       preserveRecentMessages: 2.7,
       truncateHeadChars: -1.2,
     })).toMatchObject({
-      keepThreshold: 0.5,
+      keepThreshold: 0.6,
       preserveRecentMessages: 2,
       truncateHeadChars: 0,
     });

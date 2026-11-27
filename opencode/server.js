@@ -541,7 +541,7 @@ function applyTextDecisions(messages, blocks, decisions) {
 var DEFAULT_OPTIONS = {
   goal: "",
   instructions: "",
-  keepThreshold: 0.5,
+  keepThreshold: 0.6,
   preserveRecentMessages: 6,
   maxStateTokens: 25e3,
   maxRequestTokens: 3e4,

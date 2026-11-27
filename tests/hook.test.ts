@@ -152,7 +152,7 @@ describe('hook config', () => {
   it('reads userConfig values and falls back to defaults', () => {
     expect(resolveHookConfig({})).toEqual({
       compactAtPercent: 60,
-      minReductionRatio: 0.25,
+      minReductionRatio: 0.45,
       requireKeepSignal: false,
       measureNativeSummary: false,
     });
@@ -165,7 +165,7 @@ describe('hook config', () => {
       model: 'jev-x',
       goal: 'g',
       compactAtPercent: 60,
-      minReductionRatio: 0.25,
+      minReductionRatio: 0.45,
       requireKeepSignal: false,
       measureNativeSummary: false,
     });
@@ -405,7 +405,7 @@ describe('hook config from the environment (parity B)', () => {
 
   it('still defaults when neither option nor environment sets a knob', () => {
     const config = resolveHookConfig({}, { FAST_JEV_MIN_REDUCTION: 'not-a-number' });
-    expect(config.minReductionRatio).toBe(0.25);
+    expect(config.minReductionRatio).toBe(0.45);
   });
 
   it('readEnvConfig pulls every FAST_JEV_* threshold through the literal env getter', async () => {

@@ -80,7 +80,7 @@ const SUMMARY_CEILING_MIN = 16384;
 
 export const OMP_DEFAULTS = {
   model: DEFAULT_MODEL,
-  minReductionRatio: 0.25,
+  minReductionRatio: 0.45,
   requireKeepSignal: false,
   maxSummaryTokens: 0,
 } as const;

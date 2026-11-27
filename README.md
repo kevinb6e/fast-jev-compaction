@@ -284,9 +284,9 @@ built-in default**. Pi and omp share an extension and read the environment.
 
 | Variable | Knob (default) |
 | --- | --- |
-| `FAST_JEV_KEEP_THRESHOLD` | keep probability (`0.5`) |
+| `FAST_JEV_KEEP_THRESHOLD` | keep probability (`0.6`) |
 | `FAST_JEV_PRESERVE_RECENT` | newest messages pinned (`6`) |
-| `FAST_JEV_MIN_REDUCTION` | min shrink before fallback (`0.25`; not OpenCode, which prunes continuously) |
+| `FAST_JEV_MIN_REDUCTION` | min shrink before fallback (`0.45`; not OpenCode, which prunes continuously) |
 | `FAST_JEV_COMPACT_AT_PERCENT` | auto-compact context percent (`60`) |
 | `FAST_JEV_MAX_STATE_TOKENS` | state budget (`25000`) |
 | `FAST_JEV_MAX_REQUEST_TOKENS` | request budget (`30000`) |
@@ -300,6 +300,7 @@ built-in default**. Pi and omp share an extension and read the environment.
 
 ```sh
 # one place for Claude Code, Pi, omp and OpenCode
+# keep more than the defaults (0.6 / 0.45 / 6)
 export FAST_JEV_MIN_REDUCTION=0.1
 export FAST_JEV_PRESERVE_RECENT=2
 export FAST_JEV_KEEP_THRESHOLD=0.4
@@ -402,7 +403,7 @@ const transcript: Message[] = [
 
 const result = await compactMessages(transcript, { preserveRecentMessages: 4 });
 console.log(result.messages, result.decisions, result.stats);
-if (reductionRatio(result) < 0.25) {
+if (reductionRatio(result) < 0.45) {
   // not worth it: keep the original transcript, or summarize instead
 }
 ```
@@ -436,7 +437,7 @@ relying on the environment. Never commit the key or put it in a source file.
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
 | `instructions` | — | What the user asked this compaction to keep or drop (`/compact keep the auth work`), appended after the goal; truncated the way an inferred goal is |
-| `keepThreshold` | `0.5` | Minimum keep probability for a call or result to stay |
+| `keepThreshold` | `0.6` | Minimum keep probability for a call or result to stay |
 | `preserveRecentMessages` | `6` | Newest messages never touched (the first is always kept) |
 | `maxStateTokens` | from the model | Estimated token ceiling for the state (25k for `jev-latest`) |
 | `maxRequestTokens` | from the model | Estimated ceiling for state plus one batch of questions (30k for `jev-latest`) |

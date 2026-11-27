@@ -130,3 +130,38 @@ chose to drop.
 
 `respan/span-02` works here. The incompatibility note in `README.md` applies to
 `span-01`, `span-01-lite` and `span-01-lite:free`, not to `span-02`.
+
+## Real transcript sweep (2026-11-27)
+
+Four real OpenCode sessions were exported from `opencode.db` (`session_message`
+/ `session_part` and `message` / `part` tables), then sliced to contiguous
+regions of 78–125 messages (~115k–120k characters of text, tool input and tool
+output). No synthetic filler. Each region was compacted through the library
+`compact()` with `baseten/groundhog-1` on OpenRouter, one trial per setting,
+`FAST_JEV_MAX_IN_FLIGHT=1`. No transcripts are stored in this repository.
+
+| keepThreshold | Reduction, min | Reduction, median | Requests | 429s |
+| --- | ---: | ---: | ---: | ---: |
+| 0.4 | 4.4% | 14.9% | 1 | 0 |
+| 0.5 | 19.2% | 24.0% | 1 | 0 |
+| 0.6 | 50.9% | 57.0% | 1 | 0 |
+| 0.7 | 61.7% | 73.2% | 1 | 0 |
+| 0.8 | 74.3% | 84.2% | 1 | 0 |
+
+All settings produced exactly one Jev request per compaction and no 429s.
+Threshold changes only the decisions, not the number of questions asked, so
+aggressiveness did not increase rate-limit exposure.
+
+With the default `preserveRecentMessages=6` instead of `2`, `keepThreshold=0.6`
+gave 47.2%, 50.5%, 54.0% and 71.3% reduction. That is why the fallback floor is
+`0.45`, not `0.5`: the worst real session landed at 47.2%.
+
+At `0.8` every call was dropped in all four sessions, leaving no tool evidence
+in the summary. `0.6` kept 0–8 calls depending on the session. The same sweep
+with `jev-latest` at `0.6` reduced 80.6–96.0% and dropped every call, so `0.6`
+does not introduce all-drop behavior there: the synthetic sweep above already
+recorded `kept: 0` for `jev-latest` at `0.5`.
+
+These numbers set the shipped defaults: `keepThreshold=0.6` and a `0.45`
+fallback floor. The earlier synthetic benchmark above used the old `0.5`
+threshold and is kept as a model-comparison record, not as the tuning basis.

@@ -48,10 +48,10 @@ The plugin declares these `userConfig` values in
 
 | Option | Default |
 | --- | ---: |
-| `keepThreshold` | `0.5` |
+| `keepThreshold` | `0.6` |
 | `preserveRecentMessages` | `6` |
 | `compactAtPercent` | `60` |
-| `minReductionRatio` | `0.25` |
+| `minReductionRatio` | `0.45` |
 | `requireKeepSignal` | `false` |
 | `measureNativeSummary` | `false` |
 | `metricsPath` | unset |

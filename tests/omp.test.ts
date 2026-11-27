@@ -150,7 +150,7 @@ describe('resolveOmpOptions', () => {
   it('falls back to the defaults', () => {
     expect(resolveOmpOptions({})).toEqual({
       model: 'jev-latest',
-      minReductionRatio: 0.25,
+      minReductionRatio: 0.45,
       requireKeepSignal: false,
       maxSummaryTokens: 0,
       maxStateTokens: 25000,
@@ -214,7 +214,7 @@ describe('resolveOmpOptions', () => {
       }),
     ).toEqual({
       model: 'jev-latest',
-      minReductionRatio: 0.25,
+      minReductionRatio: 0.45,
       requireKeepSignal: false,
       maxSummaryTokens: 0,
       maxStateTokens: 25000,
@@ -228,9 +228,9 @@ describe('resolveOmpOptions', () => {
 describe('summaryCeiling', () => {
   it('derives the context minus the required reduction, with a 16k floor', () => {
     const options = resolveOmpOptions({});
-    expect(summaryCeiling(preparation({ tokensBefore: 89510 }), options)).toBe(67133);
-    expect(summaryCeiling(preparation({ tokensBefore: 118572 }), options)).toBe(88929);
-    expect(summaryCeiling(preparation({ tokensBefore: 323739 }), options)).toBe(242804);
+    expect(summaryCeiling(preparation({ tokensBefore: 89510 }), options)).toBe(49231);
+    expect(summaryCeiling(preparation({ tokensBefore: 118572 }), options)).toBe(65215);
+    expect(summaryCeiling(preparation({ tokensBefore: 323739 }), options)).toBe(178056);
     expect(summaryCeiling(preparation({ tokensBefore: 8000 }), options)).toBe(16384);
   });
 
@@ -369,7 +369,7 @@ describe('buildSummary', () => {
       asker(() => 1),
     );
     expect(outcome.summary).toBeUndefined();
-    expect(outcome.reason).toMatch(/below 25% minimum/);
+    expect(outcome.reason).toMatch(/below 45% minimum/);
   });
 
   it('falls back when Jev drops every call it judged', async () => {
@@ -421,7 +421,7 @@ describe('buildSummary', () => {
 
   it('records a long retained reply that the fixed ceiling rejected', async () => {
     const words = 'word '.repeat(65_000);
-    const filler = 'filler '.repeat(30_000);
+    const filler = 'filler '.repeat(60_000);
     const outcome = await buildSummary(
       preparation({
         tokensBefore: 89510,
@@ -433,7 +433,7 @@ describe('buildSummary', () => {
           user('Anything else?'),
         ]),
       }),
-      resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1' }),
+      resolveOmpOptions({ FAST_JEV_PRESERVE_RECENT: '1', FAST_JEV_MIN_REDUCTION: '0.1' }),
       asker((name) => (name.startsWith('text_') ? 0.9 : 0.1)),
     );
     expect(estimateTokens(outcome.summary ?? '')).toBeGreaterThan(17902);

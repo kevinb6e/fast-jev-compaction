@@ -85,7 +85,7 @@ options bag (OpenCode 1), with `FAST_JEV_*` environment stand-ins:
 | `contextTokens` | `200000` | Context window assumed when the host reports none |
 | `checkpointTokens` | `40000` | Largest verbatim checkpoint supplied instead of the built-in summary (OpenCode 2) |
 | `cooldownMs` | `60000` | Milliseconds without Jev requests after one fails |
-| `keepThreshold` | `0.5` | Minimum keep probability for a call or result to stay |
+| `keepThreshold` | `0.6` | Minimum keep probability for a call or result to stay |
 | `preserveRecentMessages` | `6` | Newest messages never touched (the first is always kept) |
 | `maxStateTokens` | `25000` | Estimated token ceiling for the state |
 | `maxRequestTokens` | `30000` | Estimated ceiling for state plus one batch of questions |

@@ -151,7 +151,7 @@ describe('readPrunerOptions', () => {
       provider: 'typesafe',
       apiKey: 'env-key',
       model: 'jev-latest',
-      keepThreshold: 0.5,
+      keepThreshold: 0.6,
       preserveRecentMessages: 6,
       compactAtPercent: 60,
       contextTokens: 200_000,
@@ -683,6 +683,6 @@ describe('pruner options from the environment (parity B)', () => {
 
   it('leaves the built-in default when neither option nor environment sets it', () => {
     const opts = readPrunerOptions({ apiKey: 'sk-or-v1-abc' }, { FAST_JEV_KEEP_THRESHOLD: 'garbage' });
-    expect(opts.keepThreshold).toBe(0.5);
+    expect(opts.keepThreshold).toBe(0.6);
   });
 });

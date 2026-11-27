@@ -88,12 +88,12 @@ summary is reported with `'info'`.
 | `FAST_JEV_BASE_URL` | provider endpoint | System One endpoint override; `JEV_BASE_URL` and `TYPESAFE_BASE_URL` are read when it is unset |
 | `FAST_JEV_MODEL` | resolved provider's (`jev-1.13` on OpenCode Console, `jev-latest` otherwise) | Jev model name |
 | `FAST_JEV_GOAL` | last 3 user prompts | Ongoing task description included in the state |
-| `FAST_JEV_KEEP_THRESHOLD` | `0.5` | Minimum keep probability for a call or result to stay |
+| `FAST_JEV_KEEP_THRESHOLD` | `0.6` | Minimum keep probability for a call or result to stay |
 | `FAST_JEV_PRESERVE_RECENT` | `6` | Newest messages never touched (the first is always kept) |
 | `FAST_JEV_MAX_STATE_TOKENS` | `25000` | Estimated token ceiling for the state |
 | `FAST_JEV_MAX_REQUEST_TOKENS` | `30000` | Estimated ceiling for state plus one batch of questions |
 | `FAST_JEV_TRUNCATE_HEAD_CHARS` | `300` | Characters of a dropped tool result retained before its note |
-| `FAST_JEV_MIN_REDUCTION` | `0.25` | Minimum shrink of the rendered transcript |
+| `FAST_JEV_MIN_REDUCTION` | `0.45` | Minimum shrink of the rendered transcript |
 | `FAST_JEV_REQUIRE_KEEP_SIGNAL` | `false` | Fall back when Jev drops every call it judged, rather than apply the largest possible reduction |
 | `FAST_JEV_MAX_SUMMARY_TOKENS` | `0` (`tokensBefore` minus `FAST_JEV_MIN_REDUCTION`, min `16384`) | Estimated token ceiling for the summary; `0` derives it from the configured reduction, a positive value is absolute |
 

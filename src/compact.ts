@@ -28,7 +28,7 @@ import type {
 export const DEFAULT_OPTIONS: ResolvedCompactOptions = {
   goal: '',
   instructions: '',
-  keepThreshold: 0.5,
+  keepThreshold: 0.6,
   preserveRecentMessages: 6,
   maxStateTokens: 25_000,
   maxRequestTokens: 30_000,
